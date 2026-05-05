@@ -17,12 +17,22 @@ st.markdown("""
     .main {
         background-color: #0e1117;
     }
-    .stMetric {
+    /* Metric Card Styling */
+    [data-testid="stMetric"] {
         background-color: #1e2130;
         padding: 15px;
         border-radius: 10px;
         border: 1px solid #3e4150;
     }
+    [data-testid="stMetricLabel"] {
+        color: #94a3b8 !important; /* Muted blue-grey */
+        font-size: 0.9rem !important;
+    }
+    [data-testid="stMetricValue"] {
+        color: #ffffff !important; /* Pure white for high contrast */
+        font-weight: 700 !important;
+    }
+    /* Expander/Sidebar Styling */
     div[data-testid="stExpander"] {
         border: 1px solid #3e4150;
         border-radius: 10px;

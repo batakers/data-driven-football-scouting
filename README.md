@@ -6,8 +6,13 @@ The full pipeline was successfully executed end-to-end, from temporal feature en
 
 ## 📌 Project Versions
 
+- `v1.1-streamlit-dashboard`: Interactive scouting dashboard extension. [LATEST]
 - `v1.0-core-pipeline`: Core machine learning pipeline release.
-- `main`: Latest development version, including the Streamlit dashboard extension.
+- `main`: Latest development version.
+
+## 🖼️ Dashboard Preview
+![Scouting Dashboard Preview](https://github.com/batakers/data-driven-football-scouting/raw/main/outputs/figures/dashboard_preview.png)
+*Interactive dashboard for filtering and visualizing undervalued candidates.*
 
 ## 1. 🏗️ Temporal Data Engineering (No Leakage)
 To ensure the integrity of the predictive models, strict temporal boundaries were enforced:
@@ -106,7 +111,8 @@ python src/modeling.py
 # 6. Apply scouting logic and generate shortlists
 python src/scouting.py
 
-# 7. Run the interactive dashboard
+# 7. Run the interactive dashboard (v1.1+)
+# Use the dashboard to filter, rank, and export custom scouting reports.
 streamlit run app/dashboard.py
 ```
 
