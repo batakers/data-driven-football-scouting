@@ -4,6 +4,11 @@ This repository contains the full implementation of the pipeline, including data
 
 The full pipeline was successfully executed end-to-end, from temporal feature engineering to model evaluation and undervalued candidate detection. This project demonstrates a robust, data-driven approach to predicting market values and identifying statistically undervalued football players using real-world Transfermarkt data.
 
+## 📌 Project Versions
+
+- `v1.0-core-pipeline`: Core machine learning pipeline release.
+- `main`: Latest development version, including the Streamlit dashboard extension.
+
 ## 1. 🏗️ Temporal Data Engineering (No Leakage)
 To ensure the integrity of the predictive models, strict temporal boundaries were enforced:
 - **Valuation Anchoring:** The target variable (`market_value_in_eur`) was anchored to the latest available `valuation_date` for each player.
