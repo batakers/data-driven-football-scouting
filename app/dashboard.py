@@ -11,34 +11,66 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
+# Custom CSS for adaptive KPI cards
 st.markdown("""
-    <style>
-    .main {
-        background-color: #0e1117;
+<style>
+:root {
+    --kpi-card-bg: #ffffff;
+    --kpi-card-border: #e5e7eb;
+    --kpi-label-color: #64748b;
+    --kpi-value-color: #0f172a;
+    --kpi-shadow: rgba(15, 23, 42, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --kpi-card-bg: #111827;
+        --kpi-card-border: #374151;
+        --kpi-label-color: #cbd5e1;
+        --kpi-value-color: #f8fafc;
+        --kpi-shadow: rgba(0, 0, 0, 0.35);
     }
-    /* Metric Card Styling */
-    [data-testid="stMetric"] {
-        background-color: #1e2130;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #3e4150;
-    }
-    [data-testid="stMetricLabel"] {
-        color: #94a3b8 !important; /* Muted blue-grey */
-        font-size: 0.9rem !important;
-    }
-    [data-testid="stMetricValue"] {
-        color: #ffffff !important; /* Pure white for high contrast */
-        font-weight: 700 !important;
-    }
-    /* Expander/Sidebar Styling */
-    div[data-testid="stExpander"] {
-        border: 1px solid #3e4150;
-        border-radius: 10px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+}
+
+.kpi-card {
+    background-color: var(--kpi-card-bg);
+    border: 1px solid var(--kpi-card-border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    box-shadow: 0 4px 14px var(--kpi-shadow);
+    min-height: 105px;
+}
+
+.kpi-label {
+    color: var(--kpi-label-color);
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.kpi-value {
+    color: var(--kpi-value-color);
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1.15;
+}
+
+div[data-testid="stExpander"] {
+    border-radius: 10px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+def kpi_card(label, value):
+    st.markdown(
+        f"""
+        <div class="kpi-card">
+            <div class="kpi-label">{label}</div>
+            <div class="kpi-value">{value}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 st.title("⚽ Transfermarkt Talent Scouting Dashboard")
 st.markdown("""
@@ -107,17 +139,22 @@ st.markdown("### 📊 Key Metrics")
 st.caption("Summary of filtered candidates based on current sidebar settings.")
 
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+
+avg_age = filtered_df['age_at_valuation'].mean() if not filtered_df.empty else 0
+avg_undervalued = filtered_df['undervalued_pct'].mean() if not filtered_df.empty else 0
+median_val = filtered_df['target_market_value'].median() if not filtered_df.empty else 0
+
 with kpi1:
-    st.metric("Candidates Found", len(filtered_df))
+    kpi_card("Candidates Found", f"{len(filtered_df):,}")
+
 with kpi2:
-    avg_age = filtered_df['age_at_valuation'].mean() if not filtered_df.empty else 0
-    st.metric("Average Age", f"{avg_age:.1f} yrs")
+    kpi_card("Average Age", f"{avg_age:.1f} yrs")
+
 with kpi3:
-    avg_undervalued = filtered_df['undervalued_pct'].mean() if not filtered_df.empty else 0
-    st.metric("Average Undervaluation %", f"{avg_undervalued*100:.1f}%")
+    kpi_card("Average Undervaluation %", f"{avg_undervalued * 100:.1f}%")
+
 with kpi4:
-    median_val = filtered_df['target_market_value'].median() if not filtered_df.empty else 0
-    st.metric("Median Market Value", f"€{median_val:,.0f}")
+    kpi_card("Median Market Value", f"€{median_val:,.0f}")
 
 st.info("💡 **Methodology:** This dashboard uses the performance-only model to identify players whose recent statistical output exceeds their current market value baseline.")
 
@@ -151,7 +188,7 @@ if not filtered_df.empty:
                 'undervalued_pct': 'Undervaluation Ratio',
                 'position_group_raw': 'Position'
             },
-            template="plotly_dark",
+            template="plotly_white",
             color_discrete_sequence=px.colors.qualitative.Safe
         )
         st.plotly_chart(fig1, use_container_width=True)
@@ -171,15 +208,17 @@ if not filtered_df.empty:
                 'predicted_value': 'Predicted Market Value (€)',
                 'position_group_raw': 'Position'
             },
-            template="plotly_dark",
+            template="plotly_white",
             color_discrete_sequence=px.colors.qualitative.Safe
         )
         
         # Add a reference line (y=x)
         max_limit = max(filtered_df['target_market_value'].max(), filtered_df['predicted_value'].max())
         fig2.add_shape(
-            type="line", line=dict(dash='dash', color="white", width=1),
-            x0=0, y0=0, x1=max_limit, y1=max_limit
+            type="line",
+            line=dict(dash="dash", color="#64748b", width=1),
+            x0=0, y0=0,
+            x1=max_limit, y1=max_limit
         )
         
         st.plotly_chart(fig2, use_container_width=True)
