@@ -6,13 +6,14 @@ The full pipeline was successfully executed end-to-end, from temporal feature en
 
 ## 📌 Project Versions
 
-- `v1.1-streamlit-dashboard`: Interactive scouting dashboard extension. [LATEST]
+- `v1.2-player-similarity`: Player similarity search (statistical twin) extension. [LATEST]
+- `v1.1-streamlit-dashboard`: Interactive scouting dashboard extension.
 - `v1.0-core-pipeline`: Core machine learning pipeline release.
 - `main`: Latest development version.
 
 ## 🖼️ Dashboard Preview
 ![Scouting Dashboard Preview](https://github.com/batakers/data-driven-football-scouting/raw/main/outputs/figures/dashboard_preview.png)
-*Interactive dashboard for filtering and visualizing undervalued candidates.*
+*Interactive dashboard for filtering, visualizing undervalued candidates, and finding statistical twins.*
 
 ## 1. 🏗️ Temporal Data Engineering (No Leakage)
 To ensure the integrity of the predictive models, strict temporal boundaries were enforced:
@@ -54,6 +55,14 @@ To make this actionable for a scouting department, we generated targeted shortli
 - `top_5_under_5m.csv`
 - `top_5_u21.csv`
 
+## 4. 🔍 Extension 2: Player Similarity Search
+The **Statistical Twin** engine allows scouts to select any player in the dataset and find the most similar alternatives based purely on performance statistics (Goals, Assists, Cards per 90) and Age.
+
+- **Similarity Engine**: Uses K-Nearest Neighbors with Cosine Similarity.
+- **Search Pool**: Over 4,800 players with at least 900 minutes played.
+- **Strict Matching**: Restricts comparisons to the same position group.
+- **Actionable Insights**: Highlights if alternatives are **Cheaper**, **Younger**, or **Undervalued** compared to the target player.
+
 ---
 
 ## ⚠️ Limitations
@@ -64,9 +73,10 @@ To make this actionable for a scouting department, we generated targeted shortli
 
 ## 🚀 Future Improvements & Extensions
 - [DONE] **Extension 1: Streamlit Scouting Dashboard** - Interactive visualization for filtering candidates.
+- [DONE] **Extension 2: Player Similarity Search** - Find statistical twins for any player.
 - Add league-strength or club-prestige features.
 - Build separate models for each position group.
-- Add player similarity search (e.g., K-Nearest Neighbors).
+- Add SHAP explainability to understand model feature influence.
 - Validate shortlisted candidates against future market value growth.
 
 ---
@@ -99,20 +109,19 @@ python src/data_engineering.py
 # 2. Clean data and calculate exact age
 python src/data_cleaning.py
 
-# 3. Exploratory Data Analysis (optional, generates figures)
-python src/eda.py
-
-# 4. Construct features (per-90 metrics, one-hot encoding)
+# 3. Construct features (per-90 metrics, one-hot encoding)
 python src/feature_engineering.py
 
-# 5. Train both XGBoost models and evaluate performance
+# 4. Train both XGBoost models and evaluate performance
 python src/modeling.py
 
-# 6. Apply scouting logic and generate shortlists
+# 5. Apply scouting logic and generate shortlists
 python src/scouting.py
 
+# 6. Generate the similarity engine artifact (v1.2+)
+python src/similarity.py
+
 # 7. Run the interactive dashboard (v1.1+)
-# Use the dashboard to filter, rank, and export custom scouting reports.
 streamlit run app/dashboard.py
 ```
 
@@ -124,14 +133,10 @@ outputs/
 ├── predictions_per_player.csv
 ├── shortlists/
 │   ├── top_20_overall.csv
-│   ├── top_10_forward.csv
-│   ├── top_10_midfielder.csv
-│   ├── top_10_defender.csv
-│   ├── top_10_goalkeeper.csv
-│   ├── top_5_under_5m.csv
-│   └── top_5_u21.csv
+│   └── ... (positional shortlists)
 ├── models/
 │   ├── performance_only_model.pkl
-│   └── market_aware_model.pkl
+│   ├── market_aware_model.pkl
+│   └── similarity_engine.pkl
 └── figures/
 ```
