@@ -58,9 +58,9 @@ To make this actionable for a scouting department, we generated targeted shortli
 ## 4. 🔍 Extension 2: Player Similarity Search
 The **Statistical Twin** engine allows scouts to select any player in the dataset and find the most similar alternatives based purely on performance statistics (Goals, Assists, Cards per 90) and Age.
 
-- **Similarity Engine**: Uses K-Nearest Neighbors with Cosine Similarity.
-- **Search Pool**: Over 4,800 players with at least 900 minutes played.
-- **Strict Matching**: Restricts comparisons to the same position group.
+- **Similarity Engine**: Uses Position-Aware Weighted Cosine Similarity.
+- **Dynamic Views**: Result tables adapt columns based on the target position (e.g., Goalkeepers show Height/Minutes instead of Goals/Assists).
+- **Dual Mode**: Toggle between **Statistical Twins** (pure similarity) and **Recruitment Alternatives** (younger + cheaper).
 - **Actionable Insights**: Highlights if alternatives are **Cheaper**, **Younger**, or **Undervalued** compared to the target player.
 
 ---

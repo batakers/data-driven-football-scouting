@@ -6,14 +6,18 @@ I have successfully implemented the **Player Similarity Search** engine and inte
 
 ### 1. Similarity Engine (`src/similarity.py`)
 - **Dataset**: Uses the **full player pool** (4,852 players with 900+ minutes) from `data/processed/featured_players.csv`, merged with ML model predictions.
-- **Reliability Threshold**: The engine was fitted on 4,852 players with at least **900 minutes played** in the recent performance window. This threshold was used to reduce noise from low-sample players, though it may exclude very young prospects with limited senior minutes.
-- **Methodology**: Uses K-Nearest Neighbors (KNN) with **Cosine Similarity**.
-- **Features**: Focused on performance-only metrics to avoid market bias:
-    - `age_at_valuation`
-    - `goals_per_90`
-    - `assists_per_90`
-    - `cards_per_90`
-- **Strict Position Matching**: Ensures Goalkeepers are only compared to Goalkeepers, Forwards to Forwards, etc.
+- **⚠️ Important Notes & Limitations**
+- **Minutes played (>= 900)** is used as a reliability filter to ensure per-90 metrics are representative.
+- **Goalkeeper & Defender Similarity:** Results for defensive roles are based on age, height, and general activity (cards). They may be less granular than forwards due to the lack of specialized defensive metrics (saves, tackles, etc.) in the current dataset.
+- **Market Value:** Not used as a similarity feature to avoid price bias in player profiling.
+- **Methodology**: Uses **Manual Weighted Cosine Similarity** (Heuristic Position-Aware).
+- **Position-Aware Weighting**:
+    - **Forward**: High emphasis on `goals_per_90_ls` (0.35) and `assists_per_90_ls` (0.25).
+    - **Midfielder**: High emphasis on `assists_per_90_ls` (0.35).
+    - **Defender**: Focused on physical profile (`height`) and discipline (`cards`).
+    - **Goalkeeper**: Equal split between `age` and `height` profile.
+- **Search Pool**: Over 4,800 players with at least 900 minutes played.
+- **Strict Matching**: Restricts comparisons to the same position group by default.
 - **Similarity Score**: Calculated as `1 - cosine_distance`, where 1.0 is a perfect statistical match.
 
 > [!IMPORTANT]
@@ -26,10 +30,12 @@ I have successfully implemented the **Player Similarity Search** engine and inte
 - **Interactive Search**:
     - Select any player from the dataset.
     - View their "Target Profile" (Age, Value, Minutes).
-    - Get a list of the Top 10 most similar players in the same position group.
+    - **Dynamic Tables**: Table columns adapt automatically to the target player's position (e.g., hiding goals/assists for Goalkeepers/Defenders).
+- **Recruitment Alternative Mode**: Quick filter for candidates that are both **younger AND cheaper** than the target player.
 - **Actionable Scouting Leads**:
     - ✅/❌ flags for **Cheaper** or **Younger** alternatives.
     - 💎 flag for **Undervalued** candidates (as predicted by our ML model).
+- **Explanatory Captions**: Honest documentation of data limitations for defensive and GK roles.
 
 ## Verification Results
 - **Engine Performance**: Successfully fitted on 4,852 players.
