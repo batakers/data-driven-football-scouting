@@ -13,6 +13,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import importlib
+import src.similarity
+importlib.reload(src.similarity)
 from src.similarity import PlayerSimilarity
 
 
@@ -86,6 +89,26 @@ st.markdown(
 div[data-testid="stExpander"] {
     border-radius: 10px;
 }
+.advanced-stats-badge {
+    background-color: #059669;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 10px;
+    display: inline-block;
+}
+.basic-stats-badge {
+    background-color: #4b5563;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 10px;
+    display: inline-block;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -123,7 +146,26 @@ def disclaimer_box(message: str) -> None:
         unsafe_allow_html=True,
     )
 
-def build_similarity_display_table(res_df: pd.DataFrame, target_position: str) -> pd.DataFrame:
+def scalar_bool(value) -> bool:
+    if pd.isna(value):
+        return False
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"true", "1", "yes"}
+
+def format_stats_season(value) -> str:
+    if pd.isna(value):
+        return "N/A"
+    raw = str(value).strip()
+    try:
+        raw = str(int(float(raw)))
+    except ValueError:
+        raw = raw.replace(".0", "")
+    if len(raw) != 4:
+        return "N/A"
+    return f"20{raw[:2]}/20{raw[2:]}"
+
+def build_similarity_display_table(res_df: pd.DataFrame, target_position: str, mode: str = "basic") -> pd.DataFrame:
     """Formats and filters columns for the similarity results table based on player position."""
     table = res_df.copy()
 
@@ -148,12 +190,41 @@ def build_similarity_display_table(res_df: pd.DataFrame, target_position: str) -
     base_cols = ["name", "Age", "Age Diff"]
     value_cols = ["Market Value", "Value Diff", "Predicted Value", "Match Score", "Cheaper?", "Younger?", "Undervalued?"]
 
-    if target_position == "Goalkeeper":
-        selected_cols = base_cols + ["Height", "Minutes"] + value_cols
-    elif target_position == "Defender":
-        selected_cols = base_cols + ["Height", "Minutes", "Cards/90"] + value_cols
-    else: # Forward / Midfielder
-        selected_cols = base_cols + ["Goals/90", "Assists/90", "Cards/90"] + value_cols
+    if mode == "enriched":
+        # Add position-specific advanced columns
+        if target_position == "Forward":
+            table["xG"] = table["adv_Expected_xG"].round(2)
+            table["SoT%"] = table["adv_Standard_SoT%"].round(1)
+            table["SCA90"] = table["adv_SCA_SCA90"].round(2)
+            table["Take-On%"] = table["adv_Take-Ons_Succ%"].round(1)
+            adv_cols = ["xG", "SoT%", "SCA90", "Take-On%"]
+        elif target_position == "Midfielder":
+            table["Key Passes"] = table["adv_KP_"].round(2)
+            table["PrgP"] = table["adv_Progression_PrgP"].round(2)
+            table["Tackles W"] = table["adv_Tackles_TklW"].round(2)
+            table["Int"] = table["adv_Int_"].round(2)
+            adv_cols = ["Key Passes", "PrgP", "Tackles W", "Int"]
+        elif target_position == "Defender":
+            table["Blocks"] = table["adv_Blocks_Blocks"].round(2)
+            table["Clearance"] = table["adv_Clr_"].round(2)
+            table["Aerial%"] = table["adv_Aerial Duels_Won%"].round(1)
+            table["Tkl%"] = table["adv_Challenges_Tkl%"].round(1)
+            adv_cols = ["Blocks", "Clearance", "Aerial%", "Tkl%"]
+        else: # Goalkeeper
+            table["PassCmp%"] = table["adv_Total_Cmp%"].round(1)
+            table["Recov"] = table["adv_Performance_Recov"].round(2)
+            table["Aerial%"] = table["adv_Aerial Duels_Won%"].round(1)
+            adv_cols = ["PassCmp%", "Recov", "Aerial%"]
+        
+        selected_cols = base_cols + adv_cols + value_cols
+    else:
+        # Basic mode
+        if target_position == "Goalkeeper":
+            selected_cols = base_cols + ["Height", "Minutes"] + value_cols
+        elif target_position == "Defender":
+            selected_cols = base_cols + ["Height", "Minutes", "Cards/90"] + value_cols
+        else: # Forward / Midfielder
+            selected_cols = base_cols + ["Goals/90", "Assists/90", "Cards/90"] + value_cols
 
     final_table = table[selected_cols].copy()
     final_table = final_table.rename(columns={"name": "Player Name"})
@@ -175,7 +246,6 @@ def load_scouting_data() -> pd.DataFrame:
             return pd.read_csv(file_path)
     return pd.DataFrame()
 
-@st.cache_resource
 def load_similarity_engine():
     """Load the similarity search model."""
     engine_path = os.path.join("outputs", "models", "similarity_engine.pkl")
@@ -298,22 +368,46 @@ with tab_similarity:
         )
         target_player_id = player_options[target_player_name]
         
+        target_data = engine.data[engine.data['player_id'] == target_player_id].iloc[0]
+        
+        # Defensive check for enrichment metadata (v1.3 migration)
+        if 'enriched_available' in target_data:
+            has_enriched = scalar_bool(target_data['enriched_available'])
+        elif 'match_status' in target_data:
+            has_enriched = target_data['match_status'] == 'matched'
+        else:
+            # Fallback if engine artifact is outdated
+            has_enriched = False
+            st.sidebar.error("⚠️ Similarity data is outdated. Please re-run 'python src/similarity.py' to enable enriched mode.")
+
         # Search Settings
-        col_s1, col_s2 = st.columns(2)
+        col_s1, col_s2, col_s3 = st.columns([1, 1, 1])
         with col_s1:
-            same_pos_toggle = st.checkbox("Strict: Same Position Group Only", value=True)
-        with col_s2:
             search_mode = st.radio(
                 "Search Mode",
                 ["Statistical Twins", "Recruitment Alternatives"],
-                index=1, # Default to Recruitment for scouting use case
+                index=1,
                 horizontal=True,
                 help="Statistical Twins: Purely similar profiles. Recruitment Alternatives: Similar profiles who are YOUNGER and CHEAPER than the target."
             )
-        
+        with col_s2:
+            same_pos_toggle = st.checkbox("Strict: Same Position Group Only", value=True)
+        with col_s3:
+            if has_enriched:
+                sim_engine_mode = st.selectbox(
+                    "Similarity Model",
+                    ["Enriched (Advanced Stats)", "Basic (Core Stats)"],
+                    index=0,
+                    help="Enriched mode uses advanced metrics (xG, Key Passes, Clearances, etc.) from Top 5 leagues. Basic mode uses only core stats (Goals, Assists, Cards)."
+                )
+                actual_mode = "enriched" if "Enriched" in sim_engine_mode else "basic"
+                st.markdown('<span class="advanced-stats-badge">Advanced Stats Available</span>', unsafe_allow_html=True)
+            else:
+                st.selectbox("Similarity Model", ["Basic (Core Stats)"], disabled=True)
+                actual_mode = "basic"
+                st.markdown('<span class="basic-stats-badge">Core Stats Only</span>', unsafe_allow_html=True)
+
         # Show target profile
-        target_data = engine.data[engine.data['player_id'] == target_player_id].iloc[0]
-        
         st.markdown("#### 👤 Target Profile")
         p1, p2, p3, p4 = st.columns(4)
         with p1: kpi_card("Position", target_data['position_group_raw'])
@@ -321,15 +415,34 @@ with tab_similarity:
         with p3: kpi_card("Market Value", f"€{target_data['target_market_value']:,.0f}")
         with p4: kpi_card("Minutes Played", f"{target_data['minutes_last_season']:.0f}")
         
+        # Enrichment Metadata Display
+        if has_enriched and actual_mode == "enriched":
+            m1, m2, m3, m4 = st.columns(4)
+            with m1: st.metric("Similarity Mode", "Enriched")
+            with m2: st.metric("Match Method", target_data.get('match_method', 'N/A').replace('_', ' ').title())
+            with m3: st.metric("Match Confidence", f"{target_data.get('match_score', 0):.0f}%")
+            with m4: st.metric("Stats Season", format_stats_season(target_data.get('kaggle_season', None)))
+        elif actual_mode == "basic":
+            m1, m2, m3, m4 = st.columns(4)
+            with m1: st.metric("Similarity Mode", "Basic" if has_enriched else "Basic Fallback")
+            with m2: st.metric("Match Method", target_data.get('match_method', 'none').replace('_', ' ').title())
+            with m3: st.metric("Match Confidence", f"{target_data.get('match_score', 0):.0f}%" if has_enriched else "N/A")
+            with m4: st.metric("Stats Season", format_stats_season(target_data.get('kaggle_season', None)))
+            if has_enriched:
+                st.info("ℹ️ Using Basic Mode by selection. Advanced stats are available for this target but are not used in this search.")
+            else:
+                st.info("ℹ️ Using Basic Fallback (Core Stats only). No accepted external enrichment matched for this target.")
+
+        
         st.divider()
         
         # Similarity Search
-        st.caption(f"Top alternatives for **{target_player_name}** based on statistical performance profile.")
+        st.caption(f"Top alternatives for **{target_player_name}** using **{actual_mode.upper()}** matching logic.")
         if not same_pos_toggle:
             st.warning("⚠️ Disabling strict position filtering may produce tactically less relevant matches.")
         
         # Get a larger pool first (50) to allow for recruitment filtering
-        similar_df = engine.find_similar(target_player_id, top_n=50, same_position=same_pos_toggle)
+        similar_df = engine.find_similar(target_player_id, top_n=50, same_position=same_pos_toggle, mode=actual_mode)
             
         if similar_df is not None and not similar_df.empty:
             # Apply Recruitment Filter if selected
@@ -350,18 +463,22 @@ with tab_similarity:
                 target_position = target_data["position_group_raw"]
                 final_display = build_similarity_display_table(
                     res_df=similar_df,
-                    target_position=target_position
+                    target_position=target_position,
+                    mode=actual_mode
                 )
                 
                 st.dataframe(final_display, use_container_width=True, hide_index=True)
                 
                 # Position-specific captions
-                if target_position == "Goalkeeper":
-                    st.caption("Goalkeeper similarity is based mainly on age, height, and playing time because detailed save or clean-sheet metrics are not available.")
-                elif target_position == "Defender":
-                    st.caption("Defender similarity is based on available profile and discipline metrics. Detailed defensive actions such as tackles, interceptions, and clearances are not available.")
+                if actual_mode == "enriched":
+                    st.caption("Advanced similarity uses Kaggle Top 5 League stats. Only players matched with the external dataset are included in this mode.")
                 else:
-                    st.caption("Attacking similarity uses available recent contribution metrics: Goals/90, Assists/90, and Cards/90.")
+                    if target_position == "Goalkeeper":
+                        st.caption("Goalkeeper similarity is based mainly on age, height, and playing time because detailed save or clean-sheet metrics are not available in basic mode.")
+                    elif target_position == "Defender":
+                        st.caption("Defender similarity is based on available profile and discipline metrics. Detailed defensive actions are only available in Enriched mode.")
+                    else:
+                        st.caption("Attacking similarity uses core contribution metrics: Goals/90, Assists/90, and Cards/90.")
                 
                 # Download
                 st.download_button(
@@ -377,5 +494,5 @@ with tab_similarity:
                 st.info("No similar players found. Try selecting another target player.")
 
         st.divider()
-        methodology_box("Similarity uses position-aware feature weighting based on available recent features. Forwards and midfielders rely more on attacking contribution metrics, while defenders and goalkeepers rely more on age, height, and disciplinary profile due to limited defensive/GK-specific data. Market value is used only for comparison, not for similarity calculation.")
+        methodology_box("Similarity search supports two modes. **Enriched Mode** (v1.3) uses advanced metrics like xG, Key Passes, Progression, and Defensive actions for players in Top 5 European leagues, matched using seasonal alignment. **Basic Mode** (v1.2) uses core performance metrics (Goals/Assists/Cards) and is the fallback for players outside the Top 5 coverage. Market value and predicted valuation are used strictly for post-match filtering and comparison, never for calculating similarity.")
         disclaimer_box("Candidates identified here are statistical leads based on predictive modeling of recent performance and should be interpreted as a starting point for professional human scouting.")

@@ -1,5 +1,6 @@
 data/raw/
 outputs/models/
+!outputs/models/similarity_engine.pkl
 __pycache__/
 *.pyc
 .env
