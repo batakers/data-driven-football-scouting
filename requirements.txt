@@ -5,5 +5,7 @@ xgboost
 joblib
 streamlit
 plotly
+matplotlib
 thefuzz
 python-Levenshtein
+shap

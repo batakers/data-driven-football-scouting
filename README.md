@@ -11,20 +11,22 @@ The final system combines:
 - Top 5 League advanced-stat enrichment.
 - Transfermarkt role metadata from `player_bio.csv`.
 - Role-aware similarity search with tactical compatibility and foot/side fit.
+- SHAP model explainability for global drivers and player-level valuation rationale.
 
 ## 🧠 Project Story: From Market Value Prediction to Role-Aware Scouting
 
-Football scouting is not only about identifying players with strong statistics. A useful scouting system needs to answer three connected questions:
+Football scouting is not only about identifying players with strong statistics. A useful scouting system needs to answer four connected questions:
 
 1. **How much should a player be worth?**
 2. **Which players appear undervalued by the market?**
 3. **Who are realistic alternatives with similar performance and tactical roles?**
+4. **Why did the model value a player that way?**
 
-This project started as a market value prediction pipeline and evolved into a role-aware scouting dashboard that combines Transfermarkt market data, recent player performance, advanced Top 5 League statistics, and tactical role metadata.
+This project started as a market value prediction pipeline and evolved into a role-aware scouting dashboard that combines Transfermarkt market data, recent player performance, advanced Top 5 League statistics, tactical role metadata, and model explainability.
 
 The final system does not only predict value. It supports a scouting workflow:
 
-> Identify undervalued players, compare similar alternatives, and evaluate whether those alternatives make tactical sense.
+> Identify undervalued players, compare similar alternatives, evaluate whether those alternatives make tactical sense, and explain which model signals drive the valuation.
 
 ## 📈 Project Evolution
 
@@ -35,6 +37,7 @@ The final system does not only predict value. It supports a scouting workflow:
 | **Phase 3** | Player Similarity Search | Find statistically similar, younger, or cheaper alternatives. |
 | **Phase 4** | Advanced Stats Enrichment | Add advanced Top 5 League metrics for richer comparisons. |
 | **Phase 5** | Role-Aware Similarity | Add tactical role compatibility, role tags, and foot/side fit. |
+| **Phase 6** | Model Explainability | Add SHAP transparency for global model drivers and player-level explanations. |
 
 ### Phase 1 — From Raw Transfermarkt Data to Market Value Prediction
 
@@ -83,7 +86,7 @@ Even enriched position-level similarity was still too broad.
 A Forward could be a striker, left winger, right winger, or second striker.
 A Defender could be a centre-back, full-back, or wing-back.
 
-The final phase added Transfermarkt role metadata from `player_bio.csv`, enabling:
+The role-aware phase added Transfermarkt role metadata from `player_bio.csv`, enabling:
 
 - Primary role and role tags.
 - Compatible role matching.
@@ -93,9 +96,22 @@ The final phase added Transfermarkt role metadata from `player_bio.csv`, enablin
 
 This made the system more tactically realistic.
 
+### Phase 6 — From Scouting Scores to Model Explainability
+
+After the scouting and similarity workflows became more complete, the next question was interpretability:
+
+> Why does the model think this player should be valued higher or lower?
+
+The explainability phase adds SHAP analysis for both market value models:
+
+- **Model A:** explains the performance-only scouting model used for undervalued discovery.
+- **Model B:** explains the market-aware benchmark model and shows how strongly previous valuation drives accuracy.
+
+This turns the project from a ranking tool into a more transparent decision-support workflow. A scout can now inspect not only who is flagged as undervalued, but also which features pushed the model prediction higher or lower.
+
 ## ✅ What the Final System Does
 
-The current system supports two connected scouting workflows.
+The current system supports three connected scouting workflows.
 
 ### Scouting Overview
 
@@ -121,6 +137,17 @@ It supports:
 - **Exact Role:** candidates with the same primary role.
 - **Compatible Roles:** candidates above the tactical role-compatibility threshold.
 - **Broad Position Group:** fallback logic for broad position matching.
+
+### Model Explainability
+
+The explainability tab helps interpret the market value models.
+
+It supports:
+
+- **Global feature importance:** shows which features drive predictions across the player pool.
+- **Model A vs Model B comparison:** contrasts performance-only scouting signals against market-aware benchmark signals.
+- **Local player explanations:** explains top undervalued candidates through their strongest positive and negative SHAP drivers.
+- **Interpretability caveats:** SHAP values are shown as directional model contributions in log-value space, not direct euro amounts or causal effects.
 
 ## 🖼️ Dashboard Preview
 
@@ -162,6 +189,27 @@ The default shortlist criteria are:
 - **Minutes:** at least 900 minutes in the recent window.
 - **Market value:** between €500,000 and €20,000,000.
 - **Undervaluation:** predicted value above current market value.
+
+## 🧠 Model Explainability
+
+The explainability layer uses SHAP to make the market value models easier to inspect.
+
+The focus is Model A, because it is the discovery model used for scouting. Model B is still explained as a benchmark, and its SHAP results are expected to show that previous market value is the dominant driver.
+
+The generated outputs include:
+
+- Global SHAP summary and bar plots for Model A.
+- Global SHAP summary and bar plots for Model B.
+- A feature-importance CSV comparing both models.
+- Local waterfall explanations for top undervalued candidates.
+- A hidden-gems explanation table summarizing the strongest upward and downward model drivers.
+
+Important interpretation rule:
+
+```text
+SHAP values explain the model output in log1p market-value space.
+They should be read as directional pressure on the prediction, not direct euro contributions.
+```
 
 ## 🔍 Similarity & Role-Aware Scouting
 
@@ -221,6 +269,8 @@ The pipeline generates:
 - `outputs/validation_report.json` for enrichment validation-gate checks.
 - `outputs/role_enrichment_report.csv` for role metadata coverage.
 - `outputs/role_validation_report.json` for role-aware similarity checks.
+- `outputs/explainability/explainability_report.json` for SHAP output metadata.
+- `outputs/explainability/explainability_validation_report.json` for explainability output checks.
 
 Key validation gates include:
 
@@ -231,6 +281,9 @@ Key validation gates include:
 - Goalkeepers are never matched with outfield players.
 - Exact Role mode only returns the same primary role.
 - Compatible Roles mode only returns candidates above the role-compatibility threshold.
+- SHAP outputs are generated from feature matrices aligned to the trained model columns.
+- Local explanations are generated for top undervalued candidates from the scouting shortlist.
+- Model B explainability is expected to show `previous_market_value` as its dominant global driver.
 
 Latest validation snapshot:
 
@@ -245,6 +298,10 @@ Latest validation snapshot:
 | Exact Role checks | 260 |
 | Compatible Role checks | 260 |
 | Role metadata coverage | 95.78% |
+| Explainability report status | PASS |
+| Explainability validation status | PASS |
+| Global SHAP sample size | 5,000 |
+| Top candidate explanations | 20 |
 
 ## ⚠️ Limitations
 
@@ -253,6 +310,8 @@ Latest validation snapshot:
 - **Top 5 League enrichment is partial by design:** enriched similarity is available only for accepted external matches; other players fall back to Basic Mode.
 - **Defensive and goalkeeper metrics remain imperfect:** even with enrichment, non-Top 5 League defenders and goalkeepers can have limited event-level data.
 - **Role metadata is heuristic:** role tags and preferred-foot fit come from Transfermarkt metadata and compatibility rules, not from tactical event tracking.
+- **SHAP is model explanation, not causality:** feature contributions describe how the trained model behaves; they do not prove real-world causal effects on market value.
+- **SHAP values are in log-value space:** because the target uses `log1p(market_value_in_eur)`, contributions should not be interpreted as direct euro increases or decreases.
 - **Similarity results are leads, not final recommendations:** candidates should be validated by human scouting, video review, and context-specific recruitment constraints.
 
 ## 🚀 Reproducibility
@@ -281,6 +340,13 @@ The full role-aware pipeline can be reproduced with the guarded PowerShell runne
 
 This script runs enrichment, validation, role metadata integration, similarity engine build, and role validation in a fail-fast sequence.
 
+Then generate and validate explainability outputs:
+
+```bash
+python src/explainability.py
+python src/validate_explainability.py
+```
+
 You can also run the core scripts manually:
 
 ```bash
@@ -294,6 +360,8 @@ python src/validate_enrichment.py
 python src/enrich_roles.py
 python src/similarity.py
 python src/validate_roles.py
+python src/explainability.py
+python src/validate_explainability.py
 ```
 
 Important: avoid chaining PowerShell commands with `;` for final pipeline runs, because later commands will continue even if validation fails. Use the guarded script or explicit exit-code checks.
@@ -318,6 +386,11 @@ streamlit run app/dashboard.py
 | `data/processed/role_enriched_players.csv` | Role metadata layer merged onto the similarity pool. |
 | `outputs/role_enrichment_report.csv` | Role metadata coverage, role distribution, and missingness report. |
 | `outputs/role_validation_report.json` | PASS/FAIL role-aware validation summary. |
+| `outputs/explainability/shap_feature_importance.csv` | Global SHAP feature importance for both market value models. |
+| `outputs/explainability/top_hidden_gems_explanations.csv` | Local explanation summaries for top undervalued candidates. |
+| `outputs/explainability/player_explanations/` | Waterfall plots and feature contribution tables for selected candidates. |
+| `outputs/explainability/explainability_report.json` | Explainability output metadata and validation snapshot. |
+| `outputs/explainability/explainability_validation_report.json` | PASS/FAIL checks for SHAP files, feature alignment, and expected model behavior. |
 
 ## 🧩 Project Structure
 
@@ -337,11 +410,14 @@ src/
   enrich_roles.py               # player_bio role metadata integration
   similarity.py                 # Similarity engine
   validate_roles.py             # Role-aware validation
+  explainability.py             # SHAP model explainability
+  validate_explainability.py    # Explainability output validation
 
 scripts/
   run_v1_4_role_pipeline.ps1    # Guarded role-aware pipeline runner
 
 outputs/
+  explainability/
   figures/
   models/
   shortlists/
@@ -351,8 +427,8 @@ outputs/
 
 This project is best understood as a data product, not only a model experiment.
 
-The prediction model estimates market value. The scouting layer turns prediction errors into candidate discovery. The similarity engine converts a shortlist into recruitment alternatives. The role-aware layer makes those alternatives more tactically realistic.
+The prediction model estimates market value. The scouting layer turns prediction errors into candidate discovery. The similarity engine converts a shortlist into recruitment alternatives. The role-aware layer makes those alternatives more tactically realistic. The explainability layer shows which model signals drive the valuation.
 
 The result is a reproducible football scouting workflow that can answer:
 
-> Who looks undervalued, who is statistically similar, and who actually makes sense as a tactical alternative?
+> Who looks undervalued, who is statistically similar, who actually makes sense as a tactical alternative, and why did the model flag them?
