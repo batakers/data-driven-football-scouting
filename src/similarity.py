@@ -8,7 +8,20 @@ import os
 import json
 import sys
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+if __name__ == "__main__":
+    sys.modules.setdefault("src.similarity", sys.modules[__name__])
+
+from src.role_mapping import (
+    COMPATIBLE_ROLE_THRESHOLD,
+    foot_role_fit,
+    role_compatibility_score,
+)
+
 ENRICHED_DATA_PATH = "data/processed/enriched_similarity_players.csv"
+ROLE_DATA_PATH = "data/processed/role_enriched_players.csv"
 AUDIT_PATH = "outputs/matching_audit.csv"
 MATCHING_REPORT_PATH = "outputs/matching_report.csv"
 VALIDATION_REPORT_PATH = "outputs/validation_report.json"
@@ -99,6 +112,76 @@ class PlayerSimilarity:
             return self._bool_series(self.data["enriched_available"])
         return self.data["match_status"] == "matched"
 
+    def _role_metadata_mask(self):
+        if "role_metadata_available" not in self.data.columns:
+            return pd.Series(False, index=self.data.index)
+        return self._bool_series(self.data["role_metadata_available"])
+
+    @staticmethod
+    def _clean_role(value):
+        if pd.isna(value):
+            return "UNKNOWN"
+        role = str(value).strip()
+        return role if role else "UNKNOWN"
+
+    @staticmethod
+    def _scalar_bool(value):
+        if pd.isna(value):
+            return False
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"true", "1", "yes"}
+
+    def _role_filter_mask(self, target_idx, role_mode, same_position, role_threshold):
+        target_row = self.data.iloc[target_idx]
+        target_pos = target_row["position_group_raw"]
+        target_role = self._clean_role(target_row.get("primary_role", "UNKNOWN"))
+        role_available = self._role_metadata_mask()
+        target_role_available = bool(role_available.iloc[target_idx]) and target_role != "UNKNOWN"
+
+        if role_mode == "exact" and target_role_available:
+            return role_available & (self.data["primary_role"] == target_role)
+
+        if role_mode == "compatible" and target_role_available:
+            role_scores = self.data["primary_role"].apply(
+                lambda candidate_role: role_compatibility_score(target_role, self._clean_role(candidate_role))
+            )
+            return role_available & (role_scores >= role_threshold)
+
+        if same_position:
+            return self.data["position_group_raw"] == target_pos
+
+        return pd.Series(True, index=self.data.index)
+
+    def _score_role_layer(self, target_idx, candidate_row, role_mode, role_threshold):
+        target_row = self.data.iloc[target_idx]
+        target_role = self._clean_role(target_row.get("primary_role", "UNKNOWN"))
+        candidate_role = self._clean_role(candidate_row.get("primary_role", "UNKNOWN"))
+
+        target_has_role = bool(self._role_metadata_mask().iloc[target_idx]) and target_role != "UNKNOWN"
+        candidate_has_role = self._scalar_bool(candidate_row.get("role_metadata_available", False)) and candidate_role != "UNKNOWN"
+
+        if role_mode == "broad":
+            return 1.0 if target_row["position_group_raw"] == candidate_row["position_group_raw"] else 0.0
+
+        if role_mode == "exact":
+            if not target_has_role or not candidate_has_role:
+                return 0.0
+            return 1.0 if target_role == candidate_role else 0.0
+
+        if role_mode == "compatible":
+            if not target_has_role or not candidate_has_role:
+                return 0.0
+            score = role_compatibility_score(target_role, candidate_role)
+            return score if score >= role_threshold else 0.0
+
+        return 0.0
+
+    def _final_score(self, statistical_score, role_score, foot_score, has_role_layer):
+        if not has_role_layer:
+            return statistical_score
+        return (0.80 * statistical_score) + (0.15 * role_score) + (0.05 * foot_score)
+
     def fit(self, df):
         """
         Prepare and fit the similarity engine.
@@ -124,10 +207,19 @@ class PlayerSimilarity:
         
         print(f"Similarity engine fitted with {len(self.data)} players ({enriched_mask.sum()} enriched).")
 
-    def find_similar(self, player_id, top_n=10, same_position=True, mode='basic'):
+    def find_similar(
+        self,
+        player_id,
+        top_n=10,
+        same_position=True,
+        mode='basic',
+        role_mode='compatible',
+        role_threshold=COMPATIBLE_ROLE_THRESHOLD,
+    ):
         """
         Find top N similar players for a given player ID.
         mode: 'basic' or 'enriched'
+        role_mode: 'exact', 'compatible', or 'broad'
         """
         if self.data is None:
             raise ValueError("Model not fitted yet. Call fit() first.")
@@ -163,9 +255,13 @@ class PlayerSimilarity:
         pos_weights = weights_dict.get(target_pos, {f: 1.0/len(features) for f in features})
         w_vector = np.array([np.sqrt(pos_weights.get(f, 0.0)) for f in features])
 
-        # Filter candidate pool
-        if same_position:
-            candidate_mask = candidate_mask & (self.data["position_group_raw"] == target_pos)
+        # Filter candidate pool with role-aware logic. If role metadata is missing,
+        # the helper falls back to the v1.3 broad position behavior.
+        role_mode = str(role_mode).lower().strip()
+        if role_mode not in {"exact", "compatible", "broad"}:
+            role_mode = "compatible"
+        role_filter = self._role_filter_mask(target_idx, role_mode, same_position, role_threshold)
+        candidate_mask = candidate_mask & role_filter
 
         # Exclude target player
         candidate_mask = candidate_mask & (self.data["player_id"] != player_id)
@@ -193,27 +289,41 @@ class PlayerSimilarity:
         distances = np.array(distances)
         distances = np.nan_to_num(distances, nan=1.0, posinf=1.0, neginf=1.0)
 
-        # Find top N
-        top_order = np.argsort(distances)[:top_n]
-
         results = []
-        for order_idx in top_order:
+        for order_idx in range(len(candidate_indices)):
             idx = candidate_indices[order_idx]
             dist = distances[order_idx]
             row = self.data.iloc[idx]
+            statistical_score = max(0, 1 - dist)
+            role_score = self._score_role_layer(target_idx, row, role_mode, role_threshold)
+            foot_score = foot_role_fit(
+                self._clean_role(row.get("primary_role", "UNKNOWN")),
+                row.get("foot", None),
+            )
+            has_role_layer = role_score > 0 and self._scalar_bool(row.get("role_metadata_available", False))
+            final_score = self._final_score(statistical_score, role_score, foot_score, has_role_layer)
 
             player_data = row.to_dict()
-            player_data["similarity_score"] = max(0, 1 - dist)
+            player_data["statistical_score"] = statistical_score
+            player_data["statistical_similarity_score"] = statistical_score
+            player_data["role_compatibility_score"] = role_score
+            player_data["foot_role_fit_score"] = foot_score
+            player_data["final_similarity_score"] = final_score
+            player_data["similarity_score"] = final_score
             player_data["age_difference"] = row["age_at_valuation"] - target_age
             player_data["value_difference_vs_target"] = row["target_market_value"] - target_value
             player_data["is_cheaper"] = row["target_market_value"] < target_value
             player_data["is_younger"] = row["age_at_valuation"] < target_age
             player_data["is_undervalued"] = row["undervalued_pct"] > 0.15
             player_data["similarity_mode"] = "enriched" if use_enriched else "basic"
+            player_data["role_matching_mode"] = role_mode
 
             results.append(player_data)
 
-        return pd.DataFrame(results)
+        return pd.DataFrame(results).sort_values("final_similarity_score", ascending=False).head(top_n)
+
+
+PlayerSimilarity.__module__ = "src.similarity"
 
 def require_validation_pass():
     report_path = Path(VALIDATION_REPORT_PATH)
@@ -273,9 +383,9 @@ def main():
     if not require_validation_pass():
         return False
 
-    # Load enriched data
+    # Load role-enriched data when v1.4 artifacts are available, otherwise fall back to v1.3.
     print("Loading data for similarity engine...")
-    df_path = ENRICHED_DATA_PATH
+    df_path = ROLE_DATA_PATH if os.path.exists(ROLE_DATA_PATH) else ENRICHED_DATA_PATH
     if not os.path.exists(df_path):
         print(f"Error: {df_path} not found. Run src/enrich_similarity.py first.")
         return False
@@ -302,7 +412,9 @@ def main():
     metadata_cols = [
         'player_id', 'name', 'position_group_raw', 'minutes_last_season', 
         'target_market_value', 'predicted_value', 'undervalued_pct', 'match_status',
-        'match_method', 'match_score', 'kaggle_season'
+        'match_method', 'match_score', 'kaggle_season', 'primary_role', 'secondary_roles',
+        'role_tags', 'compatible_roles', 'role_family', 'side_preference', 'foot',
+        'foot_role_fit', 'role_metadata_available'
     ]
     
     engine = PlayerSimilarity(basic_features, enriched_features, metadata_cols)
@@ -327,9 +439,13 @@ def main():
         test_player_name = test_player['name']
         
         print(f"\nTesting ENRICHED similarity for: {test_player_name} ({test_player['position_group_raw']})")
-        similar = engine.find_similar(test_player_id, top_n=5, mode='enriched')
+        similar = engine.find_similar(test_player_id, top_n=5, mode='enriched', role_mode='compatible')
         if similar is not None and not similar.empty:
-            cols_to_show = ['name', 'position_group_raw', 'age_at_valuation', 'target_market_value', 'similarity_score', 'similarity_mode']
+            cols_to_show = [
+                'name', 'primary_role', 'position_group_raw', 'target_market_value',
+                'statistical_score', 'role_compatibility_score', 'final_similarity_score',
+                'similarity_mode'
+            ]
             print(similar[cols_to_show])
     else:
         print("\nNo matched players found for testing enriched mode.")

@@ -17,6 +17,7 @@ import importlib
 import src.similarity
 importlib.reload(src.similarity)
 from src.similarity import PlayerSimilarity
+from src.role_mapping import COMPATIBLE_ROLE_THRESHOLD
 
 
 # =========================
@@ -165,6 +166,17 @@ def format_stats_season(value) -> str:
         return "N/A"
     return f"20{raw[:2]}/20{raw[2:]}"
 
+def format_role_tags(value) -> str:
+    if pd.isna(value):
+        return "N/A"
+    tags = [tag.strip() for tag in str(value).split(",") if tag.strip()]
+    return ", ".join(tags) if tags else "N/A"
+
+def format_score(value) -> str:
+    if pd.isna(value):
+        return "N/A"
+    return f"{float(value) * 100:.2f}%"
+
 def build_similarity_display_table(res_df: pd.DataFrame, target_position: str, mode: str = "basic") -> pd.DataFrame:
     """Formats and filters columns for the similarity results table based on player position."""
     table = res_df.copy()
@@ -181,14 +193,25 @@ def build_similarity_display_table(res_df: pd.DataFrame, target_position: str, m
     table["Market Value"] = table["target_market_value"].apply(lambda x: f"€{x:,.0f}")
     table["Value Diff"] = table["value_difference_vs_target"].apply(lambda x: f"€{x:+,.0f}")
     table["Predicted Value"] = table["predicted_value"].apply(lambda x: f"€{x:,.0f}")
-    table["Match Score"] = (table["similarity_score"] * 100).apply(lambda x: f"{x:.2f}%")
+    table["Statistical Score"] = table.get("statistical_score", table["similarity_score"]).apply(format_score)
+    role_score = table["role_compatibility_score"] if "role_compatibility_score" in table.columns else pd.Series(0, index=table.index)
+    final_score = table["final_similarity_score"] if "final_similarity_score" in table.columns else table["similarity_score"]
+    table["Role Score"] = role_score.apply(format_score)
+    table["Final Match Score"] = final_score.apply(format_score)
+    table["Primary Role"] = table["primary_role"].fillna("UNKNOWN") if "primary_role" in table.columns else "UNKNOWN"
+    role_match = table["role_matching_mode"] if "role_matching_mode" in table.columns else pd.Series("broad", index=table.index)
+    table["Role Match"] = role_match.fillna("broad").str.replace("_", " ").str.title()
+    table["Foot"] = table["foot"].fillna("N/A").str.title() if "foot" in table.columns else "N/A"
 
     table["Cheaper?"] = table["is_cheaper"].apply(lambda x: "✅ Yes" if x else "❌ No")
     table["Younger?"] = table["is_younger"].apply(lambda x: "✅ Yes" if x else "❌ No")
     table["Undervalued?"] = table["is_undervalued"].apply(lambda x: "💎 Yes" if x else "— No")
 
-    base_cols = ["name", "Age", "Age Diff"]
-    value_cols = ["Market Value", "Value Diff", "Predicted Value", "Match Score", "Cheaper?", "Younger?", "Undervalued?"]
+    base_cols = ["name", "Primary Role", "Role Match", "Foot", "Age", "Age Diff"]
+    value_cols = [
+        "Market Value", "Value Diff", "Predicted Value", "Statistical Score",
+        "Role Score", "Final Match Score", "Cheaper?", "Younger?", "Undervalued?"
+    ]
 
     if mode == "enriched":
         # Add position-specific advanced columns
@@ -379,6 +402,7 @@ with tab_similarity:
             # Fallback if engine artifact is outdated
             has_enriched = False
             st.sidebar.error("⚠️ Similarity data is outdated. Please re-run 'python src/similarity.py' to enable enriched mode.")
+        has_role_metadata = scalar_bool(target_data.get('role_metadata_available', False))
 
         # Search Settings
         col_s1, col_s2, col_s3 = st.columns([1, 1, 1])
@@ -391,7 +415,18 @@ with tab_similarity:
                 help="Statistical Twins: Purely similar profiles. Recruitment Alternatives: Similar profiles who are YOUNGER and CHEAPER than the target."
             )
         with col_s2:
-            same_pos_toggle = st.checkbox("Strict: Same Position Group Only", value=True)
+            role_mode_label = st.selectbox(
+                "Role Matching Mode",
+                ["Compatible Roles", "Exact Role", "Broad Position Group"],
+                index=0,
+                help="Compatible Roles uses the v1.4 role compatibility matrix. Exact Role requires the same primary role. Broad Position Group falls back to the v1.3 position-group behavior."
+            )
+            role_mode_map = {
+                "Compatible Roles": "compatible",
+                "Exact Role": "exact",
+                "Broad Position Group": "broad",
+            }
+            role_mode_value = role_mode_map[role_mode_label]
         with col_s3:
             if has_enriched:
                 sim_engine_mode = st.selectbox(
@@ -414,6 +449,13 @@ with tab_similarity:
         with p2: kpi_card("Age", f"{target_data['age_at_valuation']:.1f}")
         with p3: kpi_card("Market Value", f"€{target_data['target_market_value']:,.0f}")
         with p4: kpi_card("Minutes Played", f"{target_data['minutes_last_season']:.0f}")
+
+        r1, r2, r3, r4, r5 = st.columns(5)
+        with r1: kpi_card("Primary Role", target_data.get('primary_role', 'UNKNOWN'))
+        with r2: kpi_card("Role Tags", format_role_tags(target_data.get('role_tags', None)))
+        with r3: kpi_card("Foot", str(target_data.get('foot', 'N/A')).title() if has_role_metadata else "N/A")
+        with r4: kpi_card("Role Mode", role_mode_label)
+        with r5: kpi_card("Role Metadata", "Available" if has_role_metadata else "Fallback")
         
         # Enrichment Metadata Display
         if has_enriched and actual_mode == "enriched":
@@ -437,12 +479,21 @@ with tab_similarity:
         st.divider()
         
         # Similarity Search
-        st.caption(f"Top alternatives for **{target_player_name}** using **{actual_mode.upper()}** matching logic.")
-        if not same_pos_toggle:
-            st.warning("⚠️ Disabling strict position filtering may produce tactically less relevant matches.")
+        st.caption(f"Top alternatives for **{target_player_name}** using **{actual_mode.upper()}** statistical mode and **{role_mode_label}** role logic.")
+        if role_mode_value == "broad":
+            st.warning("⚠️ Broad Position Group uses v1.3 fallback logic and may produce less role-specific matches.")
+        if not has_role_metadata:
+            st.info("Role metadata is not available for this target, so the engine falls back to broad position-group matching.")
         
         # Get a larger pool first (50) to allow for recruitment filtering
-        similar_df = engine.find_similar(target_player_id, top_n=50, same_position=same_pos_toggle, mode=actual_mode)
+        similar_df = engine.find_similar(
+            target_player_id,
+            top_n=50,
+            same_position=True,
+            mode=actual_mode,
+            role_mode=role_mode_value,
+            role_threshold=COMPATIBLE_ROLE_THRESHOLD,
+        )
             
         if similar_df is not None and not similar_df.empty:
             # Apply Recruitment Filter if selected
@@ -468,6 +519,7 @@ with tab_similarity:
                 )
                 
                 st.dataframe(final_display, use_container_width=True, hide_index=True)
+                st.caption("Role Score measures tactical compatibility between the target role and candidate role. 100% means the same role; lower scores indicate compatible adjacent roles.")
                 
                 # Position-specific captions
                 if actual_mode == "enriched":
@@ -488,11 +540,8 @@ with tab_similarity:
                     mime="text/csv"
                 )
         else:
-            if same_pos_toggle:
-                st.info("No similar players found within the same position group. Try unchecking 'Strict: Same Position Group Only'.")
-            else:
-                st.info("No similar players found. Try selecting another target player.")
+            st.info("No similar players found for the selected role mode. Try Compatible Roles or Broad Position Group.")
 
         st.divider()
-        methodology_box("Similarity search supports two modes. **Enriched Mode** (v1.3) uses advanced metrics like xG, Key Passes, Progression, and Defensive actions for players in Top 5 European leagues, matched using seasonal alignment. **Basic Mode** (v1.2) uses core performance metrics (Goals/Assists/Cards) and is the fallback for players outside the Top 5 coverage. Market value and predicted valuation are used strictly for post-match filtering and comparison, never for calculating similarity.")
+        methodology_box("Similarity search supports statistical and role layers. **Enriched Mode** (v1.3) uses advanced Top 5 League metrics matched using season-safe enrichment. **Role-Aware Mode** (v1.4) adds Transfermarkt role metadata, compatible-role filtering, and a small foot/side-fit bonus. Market value and predicted valuation are used strictly for post-match filtering and comparison, never for calculating similarity.")
         disclaimer_box("Candidates identified here are statistical leads based on predictive modeling of recent performance and should be interpreted as a starting point for professional human scouting.")
