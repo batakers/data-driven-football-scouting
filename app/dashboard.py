@@ -1,5 +1,6 @@
 import os
 import sys
+import html
 from pathlib import Path
 import joblib
 
@@ -110,6 +111,49 @@ div[data-testid="stExpander"] {
     margin-left: 10px;
     display: inline-block;
 }
+.target-panel {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.10), rgba(15, 23, 42, 0.02));
+    border: 1px solid rgba(37, 99, 235, 0.24);
+    border-radius: 16px;
+    padding: 18px 20px;
+    margin: 8px 0 16px 0;
+}
+.target-name {
+    color: var(--text-color);
+    font-size: 1.45rem;
+    font-weight: 800;
+    margin-bottom: 5px;
+}
+.target-summary {
+    color: var(--text-color);
+    opacity: 0.80;
+    font-size: 0.96rem;
+    margin-bottom: 10px;
+}
+.target-context {
+    color: var(--text-color);
+    opacity: 0.72;
+    font-size: 0.88rem;
+}
+.chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 6px 0 14px 0;
+}
+.profile-chip {
+    border: 1px solid rgba(100, 116, 139, 0.28);
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--text-color);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+.data-chip {
+    border: 1px solid rgba(37, 99, 235, 0.30);
+    background: rgba(59, 130, 246, 0.10);
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -172,10 +216,276 @@ def format_role_tags(value) -> str:
     tags = [tag.strip() for tag in str(value).split(",") if tag.strip()]
     return ", ".join(tags) if tags else "N/A"
 
+def format_foot_profile(value, has_metadata: bool) -> str:
+    if not has_metadata or pd.isna(value):
+        return "Foot unknown"
+    foot = str(value).strip().lower()
+    if foot in {"left", "right"}:
+        return f"{foot.title()}-footed"
+    if foot == "both":
+        return "Two-footed"
+    return "Foot unknown"
+
+def role_tags_are_redundant(primary_role: str, role_tags: str) -> bool:
+    if not role_tags or role_tags == "N/A":
+        return True
+    tags = [tag.strip() for tag in role_tags.split(",") if tag.strip()]
+    return len(tags) == 1 and tags[0].upper() == str(primary_role).upper()
+
+def render_chip_row(labels: list[str], extra_class: str = "") -> str:
+    class_name = f"profile-chip {extra_class}".strip()
+    chips = "".join(
+        f'<span class="{class_name}">{html.escape(str(label))}</span>'
+        for label in labels
+        if label and str(label).strip()
+    )
+    return f'<div class="chip-row">{chips}</div>'
+
 def format_score(value) -> str:
     if pd.isna(value):
         return "N/A"
     return f"{float(value) * 100:.2f}%"
+
+def format_match_method(value) -> str:
+    if pd.isna(value):
+        return "N/A"
+    method = str(value).strip()
+    if not method:
+        return "N/A"
+    return method.replace("_", " ").title()
+
+def format_match_confidence(value, fallback: str = "N/A") -> str:
+    if pd.isna(value):
+        return fallback
+    return f"{float(value):.0f}%"
+
+def fuzzy_confidence_note(method, score) -> str | None:
+    method_raw = "" if pd.isna(method) else str(method).strip().lower()
+    if not method_raw.startswith("fuzzy"):
+        return None
+    try:
+        score_value = float(score)
+    except (TypeError, ValueError):
+        score_value = None
+    if score_value is not None and score_value >= 99.5:
+        return "100% is the fuzzy text-match score after validation gates; it does not mean the match method was exact."
+    return "Fuzzy matches are accepted only after validation gates such as role, team, season, and duplicate-source checks."
+
+def format_currency(value) -> str:
+    if pd.isna(value):
+        return "N/A"
+    return f"€{float(value):,.0f}"
+
+def format_percentage(value, decimals: int = 1) -> str:
+    if pd.isna(value):
+        return "N/A"
+    return f"{float(value) * 100:.{decimals}f}%"
+
+LEAGUE_LABELS = {
+    "GB1": "Premier League",
+    "ES1": "La Liga",
+    "L1": "Bundesliga",
+    "IT1": "Serie A",
+    "FR1": "Ligue 1",
+    "NL1": "Eredivisie",
+    "PO1": "Liga Portugal",
+    "BE1": "Jupiler Pro League",
+    "TR1": "Super Lig",
+    "SC1": "Scottish Premiership",
+    "DK1": "Superligaen",
+    "RU1": "Russian Premier League",
+    "UKR1": "Ukrainian Premier League",
+    "GR1": "Super League Greece",
+    "SA1": "Saudi Pro League",
+    "BRA1": "Brasileirao Serie A",
+    "NO1": "Eliteserien",
+    "MLS1": "MLS",
+    "SER1": "Serbian SuperLiga",
+    "RO1": "Romanian SuperLiga",
+    "PL1": "Ekstraklasa",
+    "SE1": "Allsvenskan",
+    "A1": "Austrian Bundesliga",
+    "ARG1": "Liga Profesional",
+    "C1": "Championship",
+    "AUS1": "A-League Men",
+    "MEX1": "Liga MX",
+    "JAP1": "J1 League",
+    "KR1": "K League 1",
+}
+
+CLUB_SHORT_OVERRIDES = {
+    "Association sportive de Monaco Football Club": "AS Monaco",
+    "Brighton and Hove Albion Football Club": "Brighton",
+    "Club Atletico de Madrid S.A.D.": "Atletico Madrid",
+    "Futebol Clube do Porto": "FC Porto",
+    "Futbol Club Barcelona": "Barcelona",
+    "Olympique Gymnaste Club Nice Cote d'Azur": "OGC Nice",
+    "Olympique Gymnaste Club Nice Côte d'Azur": "OGC Nice",
+    "Reial Club Deportiu Espanyol de Barcelona S.A.D.": "Espanyol",
+    "Real Madrid Club de Futbol": "Real Madrid",
+    "Real Madrid Club de Fútbol": "Real Madrid",
+    "The Celtic Football Club": "Celtic FC",
+}
+
+CLUB_NAME_SUFFIXES = [
+    " Football Club",
+    " Fútbol Club S.A.D.",
+    " Fútbol Club S. A. D.",
+    " Futbol Club S.A.D.",
+    " Futbol Club S. A. D.",
+    " Fútbol Club",
+    " Futbol Club",
+    " Club de Fútbol",
+    " Club de Futbol",
+    " S.A.D.",
+    " S. A. D.",
+]
+
+def current_league_label(row: pd.Series) -> str:
+    comp_id = row.get("current_club_domestic_competition_id", None)
+    if pd.notna(comp_id) and str(comp_id).strip():
+        comp = str(comp_id).strip()
+        return LEAGUE_LABELS.get(comp, comp)
+
+    for col in ["current_league", "target_league_x", "target_league_y", "target_league"]:
+        if col in row and pd.notna(row[col]) and str(row[col]).strip():
+            value = str(row[col]).strip()
+            return value.split("-", 1)[1] if "-" in value else value
+
+    return "N/A"
+
+def current_club_label(row: pd.Series) -> str:
+    for col in ["current_club_name", "current_club", "club"]:
+        if col in row and pd.notna(row[col]) and str(row[col]).strip():
+            return str(row[col]).strip()
+    return "N/A"
+
+def comparable_id(value) -> str:
+    if pd.isna(value):
+        return ""
+    raw = str(value).strip()
+    try:
+        return str(int(float(raw)))
+    except ValueError:
+        return raw
+
+def matching_current_club_id(row: pd.Series) -> bool:
+    current_id = comparable_id(row.get("current_club_id", None))
+    club_id = comparable_id(row.get("club_id", None))
+    return bool(current_id and club_id and current_id == club_id)
+
+def clean_club_display_name(club_name: str) -> str:
+    if club_name == "N/A":
+        return club_name
+
+    cleaned = CLUB_SHORT_OVERRIDES.get(club_name, club_name)
+    for suffix in CLUB_NAME_SUFFIXES:
+        if cleaned.endswith(suffix):
+            cleaned = cleaned[: -len(suffix)].strip()
+            break
+
+    if cleaned.startswith("The "):
+        cleaned = cleaned[4:].strip()
+
+    if len(cleaned) > 36:
+        cleaned = f"{cleaned[:33].rstrip()}..."
+    return cleaned
+
+def current_club_display_label(row: pd.Series) -> str:
+    full_club = current_club_label(row)
+    short_club = row.get("club", None)
+    if (
+        full_club != "N/A"
+        and pd.notna(short_club)
+        and str(short_club).strip()
+        and matching_current_club_id(row)
+        and len(str(short_club).strip()) < len(full_club)
+    ):
+        return str(short_club).strip()
+    return clean_club_display_name(full_club)
+
+def club_league_label(row: pd.Series) -> str:
+    club = current_club_display_label(row)
+    league = current_league_label(row)
+    if club == "N/A":
+        return league
+    if league == "N/A":
+        return club
+    return f"{club} · {league}"
+
+def add_download_context_columns(df: pd.DataFrame) -> pd.DataFrame:
+    download_df = df.copy()
+    download_df["current_club"] = download_df.apply(current_club_label, axis=1)
+    download_df["current_league"] = download_df.apply(current_league_label, axis=1)
+    return download_df
+
+def add_overview_context_columns(df: pd.DataFrame, club_context: pd.DataFrame) -> pd.DataFrame:
+    overview_df = df.copy()
+    if club_context.empty or "player_id" not in overview_df.columns:
+        overview_df["Club / League"] = overview_df.apply(club_league_label, axis=1)
+        return overview_df
+
+    context_cols = [
+        "player_id",
+        "current_club_name",
+        "current_club_domestic_competition_id",
+    ]
+    available_cols = [col for col in context_cols if col in club_context.columns]
+    overview_df = overview_df.merge(
+        club_context[available_cols].drop_duplicates("player_id"),
+        on="player_id",
+        how="left",
+        suffixes=("", "_context"),
+    )
+
+    for col in ["current_club_name", "current_club_domestic_competition_id"]:
+        context_col = f"{col}_context"
+        if context_col in overview_df.columns:
+            if col in overview_df.columns:
+                overview_df[col] = overview_df[col].combine_first(overview_df[context_col])
+            else:
+                overview_df[col] = overview_df[context_col]
+            overview_df = overview_df.drop(columns=[context_col])
+
+    overview_df["Club / League"] = overview_df.apply(club_league_label, axis=1)
+    return overview_df
+
+def build_overview_display_table(df: pd.DataFrame) -> pd.DataFrame:
+    display_cols = [
+        "name",
+        "Club / League",
+        "age_at_valuation",
+        "position_group_raw",
+        "minutes_last_season",
+        "target_market_value",
+        "predicted_value",
+        "undervalued_pct",
+    ]
+    available_cols = [col for col in display_cols if col in df.columns]
+    display_df = df[available_cols].copy()
+
+    if "age_at_valuation" in display_df.columns:
+        display_df["age_at_valuation"] = display_df["age_at_valuation"].round(1)
+    if "minutes_last_season" in display_df.columns:
+        display_df["minutes_last_season"] = display_df["minutes_last_season"].round(0).astype(int)
+    if "target_market_value" in display_df.columns:
+        display_df["target_market_value"] = display_df["target_market_value"].apply(format_currency)
+    if "predicted_value" in display_df.columns:
+        display_df["predicted_value"] = display_df["predicted_value"].apply(format_currency)
+    if "undervalued_pct" in display_df.columns:
+        display_df["undervalued_pct"] = display_df["undervalued_pct"].apply(format_percentage)
+
+    return display_df.rename(
+        columns={
+            "name": "Player Name",
+            "age_at_valuation": "Age",
+            "position_group_raw": "Position",
+            "minutes_last_season": "Minutes",
+            "target_market_value": "Actual Value",
+            "predicted_value": "Predicted Value",
+            "undervalued_pct": "Undervaluation %",
+        }
+    )
 
 def build_similarity_display_table(res_df: pd.DataFrame, target_position: str, mode: str = "basic") -> pd.DataFrame:
     """Formats and filters columns for the similarity results table based on player position."""
@@ -193,24 +503,25 @@ def build_similarity_display_table(res_df: pd.DataFrame, target_position: str, m
     table["Market Value"] = table["target_market_value"].apply(lambda x: f"€{x:,.0f}")
     table["Value Diff"] = table["value_difference_vs_target"].apply(lambda x: f"€{x:+,.0f}")
     table["Predicted Value"] = table["predicted_value"].apply(lambda x: f"€{x:,.0f}")
-    table["Statistical Score"] = table.get("statistical_score", table["similarity_score"]).apply(format_score)
+    table["Stat Score"] = table.get("statistical_score", table["similarity_score"]).apply(format_score)
     role_score = table["role_compatibility_score"] if "role_compatibility_score" in table.columns else pd.Series(0, index=table.index)
     final_score = table["final_similarity_score"] if "final_similarity_score" in table.columns else table["similarity_score"]
     table["Role Score"] = role_score.apply(format_score)
-    table["Final Match Score"] = final_score.apply(format_score)
+    table["Final Score"] = final_score.apply(format_score)
     table["Primary Role"] = table["primary_role"].fillna("UNKNOWN") if "primary_role" in table.columns else "UNKNOWN"
     role_match = table["role_matching_mode"] if "role_matching_mode" in table.columns else pd.Series("broad", index=table.index)
     table["Role Match"] = role_match.fillna("broad").str.replace("_", " ").str.title()
     table["Foot"] = table["foot"].fillna("N/A").str.title() if "foot" in table.columns else "N/A"
+    table["Club / League"] = table.apply(club_league_label, axis=1)
 
     table["Cheaper?"] = table["is_cheaper"].apply(lambda x: "✅ Yes" if x else "❌ No")
     table["Younger?"] = table["is_younger"].apply(lambda x: "✅ Yes" if x else "❌ No")
     table["Undervalued?"] = table["is_undervalued"].apply(lambda x: "💎 Yes" if x else "— No")
 
-    base_cols = ["name", "Primary Role", "Role Match", "Foot", "Age", "Age Diff"]
+    base_cols = ["name", "Club / League", "Primary Role", "Role Match", "Foot", "Age", "Age Diff"]
     value_cols = [
-        "Market Value", "Value Diff", "Predicted Value", "Statistical Score",
-        "Role Score", "Final Match Score", "Cheaper?", "Younger?", "Undervalued?"
+        "Market Value", "Value Diff", "Predicted Value", "Stat Score",
+        "Role Score", "Final Score", "Cheaper?", "Younger?", "Undervalued?"
     ]
 
     if mode == "enriched":
@@ -234,10 +545,10 @@ def build_similarity_display_table(res_df: pd.DataFrame, target_position: str, m
             table["Tkl%"] = table["adv_Challenges_Tkl%"].round(1)
             adv_cols = ["Blocks", "Clearance", "Aerial%", "Tkl%"]
         else: # Goalkeeper
-            table["PassCmp%"] = table["adv_Total_Cmp%"].round(1)
-            table["Recov"] = table["adv_Performance_Recov"].round(2)
-            table["Aerial%"] = table["adv_Aerial Duels_Won%"].round(1)
-            adv_cols = ["PassCmp%", "Recov", "Aerial%"]
+            table["Pass Cmp%"] = table["adv_Total_Cmp%"].round(1)
+            table["Recoveries"] = table["adv_Performance_Recov"].round(2)
+            table["Aerial Win%"] = table["adv_Aerial Duels_Won%"].round(1)
+            adv_cols = ["Pass Cmp%", "Recoveries", "Aerial Win%"]
         
         selected_cols = base_cols + adv_cols + value_cols
     else:
@@ -269,6 +580,42 @@ def load_scouting_data() -> pd.DataFrame:
             return pd.read_csv(file_path)
     return pd.DataFrame()
 
+@st.cache_data
+def load_current_club_context() -> pd.DataFrame:
+    """Load current Transfermarkt club context for display-only dashboard enrichment."""
+    context_path = os.path.join("data", "processed", "featured_players.csv")
+    if not os.path.exists(context_path):
+        return pd.DataFrame()
+
+    context_cols = [
+        "player_id",
+        "current_club_name",
+        "current_club_domestic_competition_id",
+    ]
+    df_context = pd.read_csv(context_path)
+    df_context = df_context[[col for col in context_cols + ["current_club_id"] if col in df_context.columns]].copy()
+
+    clubs_path = os.path.join("data", "raw", "clubs.csv")
+    if os.path.exists(clubs_path) and "current_club_id" in df_context.columns:
+        clubs = pd.read_csv(clubs_path)
+        club_cols = ["club_id", "name", "domestic_competition_id"]
+        clubs = clubs[[col for col in club_cols if col in clubs.columns]].drop_duplicates("club_id")
+        df_context = df_context.merge(
+            clubs,
+            left_on="current_club_id",
+            right_on="club_id",
+            how="left",
+        )
+        if "name" in df_context.columns:
+            df_context["current_club_name"] = df_context["current_club_name"].combine_first(df_context["name"])
+        if "domestic_competition_id" in df_context.columns:
+            df_context["current_club_domestic_competition_id"] = (
+                df_context["current_club_domestic_competition_id"]
+                .combine_first(df_context["domestic_competition_id"])
+            )
+
+    return df_context[[col for col in context_cols if col in df_context.columns]].copy()
+
 def load_similarity_engine():
     """Load the similarity search model."""
     engine_path = os.path.join("outputs", "models", "similarity_engine.pkl")
@@ -289,6 +636,7 @@ tab_scouting, tab_similarity = st.tabs(["💎 Scouting Overview", "🔍 Similari
 # =========================
 with tab_scouting:
     df = load_scouting_data()
+    club_context_df = load_current_club_context()
     
     if df.empty:
         st.error("No scouting data found. Please run the pipeline first.")
@@ -325,13 +673,14 @@ with tab_scouting:
         k1, k2, k3, k4 = st.columns(4)
         with k1: kpi_card("Candidates Found", f"{len(filtered_df):,}")
         with k2: kpi_card("Average Age", f"{filtered_df['age_at_valuation'].mean():.1f} yrs" if not filtered_df.empty else "N/A")
-        with k3: kpi_card("Avg Undervaluation %", f"{filtered_df['undervalued_pct'].mean()*100:.1f}%" if not filtered_df.empty else "N/A")
-        with k4: kpi_card("Median Market Value", f"€{filtered_df['target_market_value'].median():,.0f}" if not filtered_df.empty else "N/A")
+        with k3: kpi_card("Average Undervaluation %", f"{filtered_df['undervalued_pct'].mean()*100:.1f}%" if not filtered_df.empty else "N/A")
+        with k4: kpi_card("Median Actual Value", f"€{filtered_df['target_market_value'].median():,.0f}" if not filtered_df.empty else "N/A")
         
-        methodology_box("This dashboard identifies players whose statistical performance exceeds their market value.")
+        methodology_box("This overview uses the performance-only model to identify players whose recent statistical output is higher than their current market value baseline.")
         st.divider()
         
         if not filtered_df.empty:
+            overview_df = add_overview_context_columns(filtered_df, club_context_df)
             st.markdown("### 📈 Visual Analysis")
             c1, c2 = st.columns(2)
             
@@ -339,31 +688,48 @@ with tab_scouting:
                 fig1 = px.scatter(
                     filtered_df, x="age_at_valuation", y="undervalued_pct",
                     color="position_group_raw", size="target_market_value", hover_name="name",
-                    title="Age vs Undervaluation Ratio", template=PLOTLY_TEMPLATE
+                    title="Age vs Undervaluation", template=PLOTLY_TEMPLATE,
+                    labels={
+                        "age_at_valuation": "Age",
+                        "undervalued_pct": "Undervaluation %",
+                        "position_group_raw": "Position",
+                        "target_market_value": "Actual Market Value (€)",
+                        "name": "Player Name",
+                    },
                 )
+                fig1.update_yaxes(tickformat=".0%")
                 st.plotly_chart(fig1, use_container_width=True)
                 
             with c2:
                 fig2 = px.scatter(
                     filtered_df, x="target_market_value", y="predicted_value",
                     color="position_group_raw", hover_name="name",
-                    title="Actual vs Predicted Value", template=PLOTLY_TEMPLATE
+                    title="Actual vs Predicted Market Value", template=PLOTLY_TEMPLATE,
+                    labels={
+                        "target_market_value": "Actual Market Value (€)",
+                        "predicted_value": "Predicted Market Value (€)",
+                        "position_group_raw": "Position",
+                        "name": "Player Name",
+                    },
                 )
                 max_l = max(filtered_df["target_market_value"].max(), filtered_df["predicted_value"].max())
                 fig2.add_shape(type="line", line=dict(dash="dash", color=REFERENCE_LINE_COLOR), x0=0, y0=0, x1=max_l, y1=max_l)
                 st.plotly_chart(fig2, use_container_width=True)
+                st.caption("Points above the dashed line indicate players predicted to be worth more than their current market value.")
             
             st.divider()
-            st.markdown("### 📋 Shortlist")
+            st.markdown("### 📋 Top Undervalued Candidates")
             
-            display_cols = ['name', 'age_at_valuation', 'position_group_raw', 'minutes_last_season', 'target_market_value', 'predicted_value', 'undervalued_pct']
-            display_df = filtered_df[display_cols].copy()
-            display_df['age_at_valuation'] = display_df['age_at_valuation'].round(1)
-            display_df['target_market_value'] = display_df['target_market_value'].apply(lambda x: f"€{x:,.0f}")
-            display_df['predicted_value'] = display_df['predicted_value'].apply(lambda x: f"€{x:,.0f}")
-            display_df['undervalued_pct'] = display_df['undervalued_pct'].apply(lambda x: f"{x*100:.1f}%")
+            display_df = build_overview_display_table(overview_df)
             
             st.dataframe(display_df, use_container_width=True, hide_index=True)
+            download_df = add_download_context_columns(overview_df)
+            st.download_button(
+                label="💾 Download Filtered Shortlist",
+                data=download_df.to_csv(index=False),
+                file_name="filtered_undervalued_shortlist.csv",
+                mime="text/csv",
+            )
             disclaimer_box("Statistical leads should be validated by professional human scouting.")
         else:
             st.warning("Adjust filters to see candidates.")
@@ -444,36 +810,80 @@ with tab_similarity:
 
         # Show target profile
         st.markdown("#### 👤 Target Profile")
+        target_role = target_data.get('primary_role', 'UNKNOWN') if has_role_metadata else "UNKNOWN"
+        target_tags = format_role_tags(target_data.get('role_tags', None))
+        target_foot = format_foot_profile(target_data.get('foot', None), has_role_metadata)
+        role_chips = [f"Role: {target_role}", target_foot]
+        if not role_tags_are_redundant(str(target_role), target_tags):
+            role_chips.insert(1, f"Tags: {target_tags}")
+        role_metadata_label = "Metadata available" if has_role_metadata else "Broad-position fallback"
+        role_chips.append(role_metadata_label)
+        match_method = target_data.get('match_method', 'N/A' if has_enriched else 'none')
+        match_score = target_data.get('match_score', 0)
+        match_method_label = format_match_method(match_method)
+        match_confidence_label = format_match_confidence(match_score) if has_enriched else "N/A"
+        stats_season_label = format_stats_season(target_data.get('kaggle_season', None))
+        similarity_mode_label = (
+            "Enriched" if has_enriched and actual_mode == "enriched"
+            else "Basic" if has_enriched
+            else "Basic Fallback"
+        )
+        if has_enriched and actual_mode == "enriched":
+            data_context = f"Using Enriched advanced stats from {stats_season_label}. Player metadata matched via {match_method_label} validation."
+        elif has_enriched:
+            data_context = f"Using Basic core stats by selection. Enriched stats are available from {stats_season_label} but not used in this search."
+        else:
+            data_context = "Using Basic Fallback with core stats only. No accepted external enrichment matched for this target."
+
+        st.markdown(
+            f"""
+            <div class="target-panel">
+                <div class="target-name">{html.escape(str(target_player_name))}</div>
+                <div class="target-summary">
+                    {html.escape(str(target_data['position_group_raw']))} · Primary role: {html.escape(str(target_role))} · {html.escape(target_foot)}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         p1, p2, p3, p4 = st.columns(4)
         with p1: kpi_card("Position", target_data['position_group_raw'])
         with p2: kpi_card("Age", f"{target_data['age_at_valuation']:.1f}")
         with p3: kpi_card("Market Value", f"€{target_data['target_market_value']:,.0f}")
         with p4: kpi_card("Minutes Played", f"{target_data['minutes_last_season']:.0f}")
 
-        r1, r2, r3, r4, r5 = st.columns(5)
-        with r1: kpi_card("Primary Role", target_data.get('primary_role', 'UNKNOWN'))
-        with r2: kpi_card("Role Tags", format_role_tags(target_data.get('role_tags', None)))
-        with r3: kpi_card("Foot", str(target_data.get('foot', 'N/A')).title() if has_role_metadata else "N/A")
-        with r4: kpi_card("Role Mode", role_mode_label)
-        with r5: kpi_card("Role Metadata", "Available" if has_role_metadata else "Fallback")
-        
-        # Enrichment Metadata Display
-        if has_enriched and actual_mode == "enriched":
-            m1, m2, m3, m4 = st.columns(4)
-            with m1: st.metric("Similarity Mode", "Enriched")
-            with m2: st.metric("Match Method", target_data.get('match_method', 'N/A').replace('_', ' ').title())
-            with m3: st.metric("Match Confidence", f"{target_data.get('match_score', 0):.0f}%")
-            with m4: st.metric("Stats Season", format_stats_season(target_data.get('kaggle_season', None)))
-        elif actual_mode == "basic":
-            m1, m2, m3, m4 = st.columns(4)
-            with m1: st.metric("Similarity Mode", "Basic" if has_enriched else "Basic Fallback")
-            with m2: st.metric("Match Method", target_data.get('match_method', 'none').replace('_', ' ').title())
-            with m3: st.metric("Match Confidence", f"{target_data.get('match_score', 0):.0f}%" if has_enriched else "N/A")
-            with m4: st.metric("Stats Season", format_stats_season(target_data.get('kaggle_season', None)))
-            if has_enriched:
-                st.info("ℹ️ Using Basic Mode by selection. Advanced stats are available for this target but are not used in this search.")
-            else:
-                st.info("ℹ️ Using Basic Fallback (Core Stats only). No accepted external enrichment matched for this target.")
+        st.markdown("##### Role Profile")
+        st.markdown(render_chip_row(role_chips), unsafe_allow_html=True)
+
+        st.markdown("##### Data Context")
+        data_chips = [
+            f"{similarity_mode_label} mode",
+            "Advanced stats available" if has_enriched else "Core stats only",
+            f"Stats season: {stats_season_label}",
+        ]
+        st.markdown(render_chip_row(data_chips, "data-chip"), unsafe_allow_html=True)
+        st.caption(data_context)
+
+        with st.expander("View data matching details"):
+            details_df = pd.DataFrame(
+                [
+                    {"Field": "Similarity Mode", "Value": similarity_mode_label},
+                    {"Field": "Match Method", "Value": match_method_label},
+                    {"Field": "Match Confidence", "Value": match_confidence_label},
+                    {"Field": "Stats Season", "Value": stats_season_label},
+                ]
+            )
+            st.dataframe(details_df, use_container_width=True, hide_index=True)
+            st.caption("Match confidence refers to the player metadata matching process between datasets. It is not the similarity score.")
+
+            fuzzy_note = fuzzy_confidence_note(match_method, match_score)
+            if fuzzy_note:
+                st.caption(fuzzy_note)
+            if has_enriched and actual_mode == "basic":
+                st.info("Using Basic Mode by selection. Advanced stats are available for this target but are not used in this search.")
+            elif not has_enriched:
+                st.info("Using Basic Fallback (Core Stats only). No accepted external enrichment matched for this target.")
 
         
         st.divider()
@@ -519,23 +929,26 @@ with tab_similarity:
                 )
                 
                 st.dataframe(final_display, use_container_width=True, hide_index=True)
-                st.caption("Role Score measures tactical compatibility between the target role and candidate role. 100% means the same role; lower scores indicate compatible adjacent roles.")
-                
-                # Position-specific captions
-                if actual_mode == "enriched":
-                    st.caption("Advanced similarity uses Kaggle Top 5 League stats. Only players matched with the external dataset are included in this mode.")
-                else:
-                    if target_position == "Goalkeeper":
-                        st.caption("Goalkeeper similarity is based mainly on age, height, and playing time because detailed save or clean-sheet metrics are not available in basic mode.")
+                with st.expander("How to read this table"):
+                    st.markdown(
+                        "- **Club / League** uses current Transfermarkt club and competition context when available; enriched stats still follow the displayed stats season.\n"
+                        "- **Stat Score** measures performance-profile similarity before role weighting.\n"
+                        "- **Role Score** measures tactical compatibility. 100% means the same role; lower scores indicate compatible adjacent roles.\n"
+                        "- **Final Score** combines statistical similarity, role compatibility, and preferred-foot fit."
+                    )
+                    if actual_mode == "enriched":
+                        st.markdown("- **Enriched mode** uses Kaggle Top 5 League advanced stats and includes only accepted external matches.")
+                    elif target_position == "Goalkeeper":
+                        st.markdown("- **Basic goalkeeper mode** relies mainly on age, height, and playing time because detailed save metrics are not available.")
                     elif target_position == "Defender":
-                        st.caption("Defender similarity is based on available profile and discipline metrics. Detailed defensive actions are only available in Enriched mode.")
+                        st.markdown("- **Basic defender mode** uses available profile and discipline metrics; detailed defensive actions are only available in Enriched mode.")
                     else:
-                        st.caption("Attacking similarity uses core contribution metrics: Goals/90, Assists/90, and Cards/90.")
+                        st.markdown("- **Basic attacking mode** uses core contribution metrics: Goals/90, Assists/90, and Cards/90.")
                 
                 # Download
                 st.download_button(
                     label=f"💾 Download Alternatives for {target_player_name}",
-                    data=similar_df.to_csv(index=False),
+                    data=add_download_context_columns(similar_df).to_csv(index=False),
                     file_name=f"alternatives_{target_player_name.replace(' ', '_')}.csv",
                     mime="text/csv"
                 )
