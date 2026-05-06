@@ -1,124 +1,358 @@
-# Transfermarkt Market Value Prediction & Undervalued Talent Scouting
+# Transfermarkt Market Value Prediction & Role-Aware Talent Scouting
 
-This repository contains the full implementation of an end-to-end data science pipeline for predicting football player market values and identifying statistically undervalued talent. It integrates Transfermarkt market data with advanced performance metrics from elite European leagues.
+An end-to-end football analytics project that started as a market value prediction pipeline and evolved into a role-aware scouting dashboard for finding undervalued players and realistic recruitment alternatives.
 
-## 📌 Project Versions
-- **v1.4**: Role-Aware Similarity Search with Transfermarkt Role Metadata. [LATEST]
-- **v1.3**: Enriched Similarity Search (Advanced Stats Integration).
-- **v1.2**: Position-Aware Player Similarity Search (Basic Mode).
-- **v1.1**: Streamlit Scouting Dashboard.
-- **v1.0**: Core Machine Learning Pipeline (Market Value Prediction).
+The final system combines:
+
+- Transfermarkt player, club, market value, and appearance data.
+- Leakage-safe recent performance features.
+- XGBoost market value prediction.
+- Undervalued player discovery.
+- Top 5 League advanced-stat enrichment.
+- Transfermarkt role metadata from `player_bio.csv`.
+- Role-aware similarity search with tactical compatibility and foot/side fit.
+
+## 🧠 Project Story: From Market Value Prediction to Role-Aware Scouting
+
+Football scouting is not only about identifying players with strong statistics. A useful scouting system needs to answer three connected questions:
+
+1. **How much should a player be worth?**
+2. **Which players appear undervalued by the market?**
+3. **Who are realistic alternatives with similar performance and tactical roles?**
+
+This project started as a market value prediction pipeline and evolved into a role-aware scouting dashboard that combines Transfermarkt market data, recent player performance, advanced Top 5 League statistics, and tactical role metadata.
+
+The final system does not only predict value. It supports a scouting workflow:
+
+> Identify undervalued players, compare similar alternatives, and evaluate whether those alternatives make tactical sense.
+
+## 📈 Project Evolution
+
+| Phase | Focus | Why It Was Added |
+|---|---|---|
+| **Phase 1** | Market Value Prediction | Build a leakage-safe model to estimate player value. |
+| **Phase 2** | Scouting Dashboard | Turn static model outputs into an interactive analysis tool. |
+| **Phase 3** | Player Similarity Search | Find statistically similar, younger, or cheaper alternatives. |
+| **Phase 4** | Advanced Stats Enrichment | Add advanced Top 5 League metrics for richer comparisons. |
+| **Phase 5** | Role-Aware Similarity | Add tactical role compatibility, role tags, and foot/side fit. |
+
+### Phase 1 — From Raw Transfermarkt Data to Market Value Prediction
+
+The project began with a core machine learning question:
+
+> Can we estimate a player's market value using only information available before their valuation date?
+
+To avoid data leakage, all player performance features were built from matches played before each valuation date. Two models were trained:
+
+- A **performance-only model** for scouting and discovery.
+- A **market-aware model** for accuracy benchmarking.
+
+This created the foundation for detecting players whose recent statistical output appeared stronger than their current market value.
+
+### Phase 2 — From Model Output to Scouting Dashboard
+
+The first model produced useful predictions, but a static CSV shortlist was not enough for practical analysis.
+
+The second phase introduced an interactive Streamlit dashboard, allowing users to filter candidates by age, position, market value, and minutes played. This shifted the project from a modeling experiment into an interactive scouting product.
+
+### Phase 3 — From Undervalued Players to Similar Alternatives
+
+After identifying undervalued candidates, the next scouting question became:
+
+> If we cannot afford Player X, who plays similarly but is younger or cheaper?
+
+The third phase introduced a player similarity engine with two workflows:
+
+- **Statistical Twins:** find the closest statistical profiles.
+- **Recruitment Alternatives:** find similar players who are younger and cheaper.
+
+This made the system more useful for real scouting scenarios.
+
+### Phase 4 — From Basic Similarity to Enriched Performance Context
+
+Basic similarity based on goals, assists, and cards worked for some players, but it was too limited for midfielders, defenders, and goalkeepers.
+
+The enrichment phase integrated advanced Top 5 League statistics such as xG, key passes, progressive actions, blocks, aerials, and goalkeeper-related indicators. It also added a validation-gated process to avoid bad external data matches.
+
+This made the similarity engine more position-specific and more transparent.
+
+### Phase 5 — From Position-Aware to Role-Aware Scouting
+
+Even enriched position-level similarity was still too broad.
+
+A Forward could be a striker, left winger, right winger, or second striker.
+A Defender could be a centre-back, full-back, or wing-back.
+
+The final phase added Transfermarkt role metadata from `player_bio.csv`, enabling:
+
+- Primary role and role tags.
+- Compatible role matching.
+- Exact Role / Compatible Roles / Broad Position modes.
+- Preferred-foot and side-fit scoring.
+- Final match score combining statistical similarity, role compatibility, and foot fit.
+
+This made the system more tactically realistic.
+
+## ✅ What the Final System Does
+
+The current system supports two connected scouting workflows.
+
+### Scouting Overview
+
+The overview tab identifies undervalued candidates using the performance-only market value model.
+
+It helps answer:
+
+- Which young players appear underpriced relative to recent statistical output?
+- How does predicted value compare with current market value?
+- Which candidates fit age, position, value, and minutes filters?
+- Which players should be reviewed first by a scout or analyst?
+
+### Similarity Search
+
+The similarity tab compares a selected target player with potential alternatives.
+
+It supports:
+
+- **Statistical Twins:** closest performance-profile matches.
+- **Recruitment Alternatives:** similar players who are younger and cheaper.
+- **Enriched Mode:** advanced-stat similarity for accepted Top 5 League matches.
+- **Basic Mode:** global fallback using core performance features.
+- **Exact Role:** candidates with the same primary role.
+- **Compatible Roles:** candidates above the tactical role-compatibility threshold.
+- **Broad Position Group:** fallback logic for broad position matching.
 
 ## 🖼️ Dashboard Preview
+
 ![Scouting Dashboard Preview](https://github.com/batakers/data-driven-football-scouting/raw/main/outputs/figures/dashboard_preview.png)
-*Interactive dashboard for filtering, visualizing undervalued candidates, and finding statistical twins.*
 
----
+The dashboard is designed as a scouting workflow rather than a model report. It separates player facts, role context, data provenance, score components, and recruitment flags so the results are easier to interpret for non-technical users.
 
-## 1. 🏗️ Core Methodology: Market Value Prediction
+## 🏗️ Core Methodology
 
-### Temporal Data Engineering (No Leakage)
-To ensure the integrity of the predictive models, strict temporal boundaries were enforced:
-- **Valuation Anchoring:** The target variable (`market_value_in_eur`) was anchored to the latest available `valuation_date` for each player.
-- **Leakage Prevention:** All match appearances occurring *after* the `valuation_date` were discarded.
-- **Recent Performance Window:** Models were trained exclusively on player statistics (minutes, goals, assists, cards per 90) generated within exactly **365 days prior to their valuation date**.
+### Temporal Data Engineering
 
-### Dual-Model Evaluation
-We developed two distinct XGBoost models to serve different analytical purposes:
-| Model | Features | Purpose | $R^2$ Score | Median APE |
+The market value target is time-sensitive. To avoid leaking future information into the model, each player row is anchored to a valuation date.
+
+The pipeline enforces:
+
+- **Valuation anchoring:** the target variable is the latest available `market_value_in_eur` for each player.
+- **No future appearances:** matches after the valuation date are excluded.
+- **Recent performance window:** minutes, goals, assists, and cards are calculated from the 365 days before valuation.
+- **Per-90 normalization:** performance features are adjusted for playing time.
+
+### Dual Model Strategy
+
+Two XGBoost models were trained for different analytical purposes.
+
+| Model | Features | Purpose | Approx. R² | Median APE |
 |---|---|---|---:|---:|
-| **Model A** | Performance-only | Scouting & Discovery | ~0.45 | ~68% |
-| **Model B** | Performance + Prev. Value | Accuracy Benchmark | ~0.97 | ~15% |
+| **Model A** | Performance-only | Scouting and undervalued discovery | ~0.45 | ~68% |
+| **Model B** | Performance + previous value | Accuracy benchmark | ~0.97 | ~15% |
 
-### Scouting Criteria for "Undervalued" Detection
-Candidates were identified by comparing their Model A predicted value against their actual Transfermarkt market value.
-- **Age:** ≤ 25 years old
-- **Playing Time:** ≥ 900 minutes in the last season
-- **Market Value Range:** €500,000 to €20,000,000
+Model A is intentionally harder and less accurate because it avoids using previous market value. That makes it more useful for discovery: it highlights players whose recent statistical output appears stronger than their current market price.
 
----
+### Undervalued Candidate Criteria
 
-## 2. 🔍 Extension 3: Enriched Similarity Search (v1.3)
-The v1.3 update bridges the gap between market data and granular on-pitch performance.
+Candidates are generated by comparing Model A predicted value against actual Transfermarkt market value.
 
-- **Advanced Metrics Layer**: Integrates external Top 5 League stats (xG, Key Passes, Progressive Actions, etc.) matched via a multi-stage pipeline with **8.83% overall coverage** across the full Transfermarkt pool and **42.32% coverage** among eligible Top 5 League players after release-gate validation.
-- **Dual Similarity Engine**:
-    - **Enriched Mode**: Richer position-specific matching for elite league players using granular performance features.
-    - **Basic Mode**: Global fallback matching using core stats (Goals, Assists, Cards).
-- **Position-Aware Weighted Similarity**: Custom heuristic weights per position (Forward, Midfielder, Defender, Goalkeeper) ensure tactical relevance.
-- **Release-Gated Enrichment**: Accepted enriched rows must pass temporal safety, position compatibility, one-to-one Kaggle row assignment checks, and exclude manual-review fuzzy matches before the similarity engine can be built.
+The default shortlist criteria are:
 
----
+- **Age:** 25 or younger.
+- **Minutes:** at least 900 minutes in the recent window.
+- **Market value:** between €500,000 and €20,000,000.
+- **Undervaluation:** predicted value above current market value.
 
-## 3. 🧭 Extension 4: Role-Aware Similarity Search (v1.4)
-The v1.4 update adds Transfermarkt role metadata on top of the v1.3 performance layer. It improves tactical realism without using market value fields from `player_bio.csv` as similarity features.
+## 🔍 Similarity & Role-Aware Scouting
 
-- **Role Metadata Layer**: Joins `player_bio.tmid` to `player_id`, producing primary roles, secondary role tags, compatible roles, role family, side preference, and foot/side fit.
-- **Coverage**: Role metadata is available for **19,448 / 20,305 players (95.78%)** in the role-enriched pool.
-- **Role-Aware Ranking**: Final match score combines statistical similarity, role compatibility, and a small preferred-foot fit bonus while retaining the raw component scores.
-- **Dashboard Role Modes**:
-    - **Compatible Roles**: Default mode using the tactical compatibility matrix.
-    - **Exact Role**: Restricts candidates to the same primary role.
-    - **Broad Position Group**: v1.3 fallback behavior.
-- **Validation**: `src/validate_roles.py` verifies role metadata integrity, GK/non-GK separation, exact-role behavior, compatible-role thresholds, and score bounds.
+The final similarity engine combines statistical profile matching with role intelligence.
 
----
+### Advanced Stats Enrichment Layer
 
-## ⚠️ Limitations & Future Improvements
-- **Defensive & Goalkeeping Metrics**: While v1.3 adds advanced stats and v1.4 adds role metadata, core data for non-Top 5 league defenders remains limited to age, height, and disciplinary profile.
-- **Role Metadata Interpretation**: Role tags and preferred-foot fit are derived from Transfermarkt metadata and heuristic compatibility rules. They improve tactical plausibility but should not be treated as definitive tactical-role labels.
-- **External Market Factors**: Market value is influenced by contract length, injury history, and agent influence—factors currently absent from the dataset.
-- **Future Work**: Integration of league-strength coefficients and SHAP explainability for prediction transparency.
+The enrichment layer adds Top 5 League advanced statistics for players that can be safely matched to the external performance dataset.
 
----
+The enrichment layer includes:
 
-## 🚀 Reproducibility Guide
+- Expected goals and shooting metrics.
+- Key passes and shot-creating actions.
+- Progressive passes and carries.
+- Defensive actions such as blocks, clearances, tackles, and interceptions.
+- Aerial duel success.
+- Goalkeeper-adjacent distribution and recovery indicators where available.
 
-### 1. Data Setup
-Place the raw Transfermarkt CSV files (players, appearances, games, valuations), the Kaggle Top 5 League CSV, and `player_bio.csv` in `data/raw/`.
+Coverage is intentionally reported with multiple denominators:
 
-### 2. Execution Pipeline
-Run the following scripts in order to reproduce the full system from scratch:
+- **Overall enrichment coverage:** 8.83% across the full Transfermarkt pool.
+- **Eligible Top 5 League coverage:** 42.32% among eligible Top 5 League players.
+- **Accepted enriched matches:** 1,792.
+- **Enriched players in final similarity engine:** 1,212 after eligibility filters.
 
-```bash
-# Core Data Pipeline
-python src/data_engineering.py     # Temporal filtering
-python src/data_cleaning.py        # Cleaning & formatting
-python src/feature_engineering.py  # Per-90 & encoding
+This distinction matters because the external Kaggle dataset covers Top 5 League players, while the Transfermarkt pool contains many players outside that coverage.
 
-# Modeling & Scouting
-python src/modeling.py             # Train XGBoost models
-python src/scouting.py             # Generate shortlists
+### Role Metadata Layer
 
-# Enrichment & Similarity (v1.3/v1.4)
-python src/enrich_similarity.py    # Match with Kaggle stats
-python src/validate_enrichment.py  # Release gate validation
-python src/enrich_roles.py         # Join Transfermarkt role metadata
-python src/similarity.py           # Build similarity engine
-python src/validate_roles.py       # Role-aware validation
+The role metadata layer adds tactical role understanding on top of statistical similarity.
+
+The similarity engine now considers:
+
+- **Statistical similarity** from recent and enriched performance metrics.
+- **Role compatibility** from Transfermarkt role metadata.
+- **Foot/side fit** for wide roles such as LB, RB, LW, RW, LM, and RM.
+
+Final score:
+
+```text
+Final Match Score =
+0.80 × Statistical Similarity
++ 0.15 × Role Compatibility
++ 0.05 × Foot / Side Fit
 ```
 
-On PowerShell, use the guarded release pipeline instead of separating commands with `;`:
+Role metadata is available for **19,448 / 20,305 players (95.78%)** in the role-enriched pool.
+
+## ✅ Trust & Validation Layer
+
+Because this project combines multiple datasets, validation was treated as part of the product, not an afterthought.
+
+The pipeline generates:
+
+- `outputs/matching_report.csv` for denominator-aware external data coverage.
+- `outputs/matching_audit.csv` for row-level match review.
+- `outputs/validation_report.json` for enrichment validation-gate checks.
+- `outputs/role_enrichment_report.csv` for role metadata coverage.
+- `outputs/role_validation_report.json` for role-aware similarity checks.
+
+Key validation gates include:
+
+- No accepted future-stat leakage.
+- No accepted position mismatch.
+- No conflicting duplicate Kaggle assignments.
+- No fuzzy-review matches accepted automatically.
+- Goalkeepers are never matched with outfield players.
+- Exact Role mode only returns the same primary role.
+- Compatible Roles mode only returns candidates above the role-compatibility threshold.
+
+Latest validation snapshot:
+
+| Check | Result |
+|---|---:|
+| Enrichment validation status | PASS |
+| Role validation status | PASS |
+| Future leakage accepted | 0 |
+| Position mismatch accepted | 0 |
+| Duplicate conflicting Kaggle assignments | 0 |
+| Fuzzy-review accepted | 0 |
+| Exact Role checks | 260 |
+| Compatible Role checks | 260 |
+| Role metadata coverage | 95.78% |
+
+## ⚠️ Limitations
+
+- **Market value is not purely statistical:** contract length, injuries, reputation, agent influence, and transfer rumors can materially affect price.
+- **Model A is discovery-oriented, not a pricing oracle:** the performance-only model intentionally excludes previous market value, so it is less accurate but more useful for finding potential mispricing.
+- **Top 5 League enrichment is partial by design:** enriched similarity is available only for accepted external matches; other players fall back to Basic Mode.
+- **Defensive and goalkeeper metrics remain imperfect:** even with enrichment, non-Top 5 League defenders and goalkeepers can have limited event-level data.
+- **Role metadata is heuristic:** role tags and preferred-foot fit come from Transfermarkt metadata and compatibility rules, not from tactical event tracking.
+- **Similarity results are leads, not final recommendations:** candidates should be validated by human scouting, video review, and context-specific recruitment constraints.
+
+## 🚀 Reproducibility
+
+### 1. Data Setup
+
+Place the raw datasets in `data/raw/`:
+
+- Transfermarkt player, appearance, game, and valuation CSV files.
+- Kaggle Top 5 League advanced-stat CSV.
+- Transfermarkt Football Database `player_bio.csv`.
+
+### 2. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Run the Full Pipeline
+
+The full role-aware pipeline can be reproduced with the guarded PowerShell runner:
 
 ```powershell
 .\scripts\run_v1_4_role_pipeline.ps1
 ```
 
-`src/similarity.py` refuses to build if `outputs/validation_report.json` is missing, failed, or older than the enrichment outputs.
+This script runs enrichment, validation, role metadata integration, similarity engine build, and role validation in a fail-fast sequence.
 
-### 3. Launch Dashboard
+You can also run the core scripts manually:
+
 ```bash
-pip install -r requirements.txt
+python src/data_engineering.py
+python src/data_cleaning.py
+python src/feature_engineering.py
+python src/modeling.py
+python src/scouting.py
+python src/enrich_similarity.py
+python src/validate_enrichment.py
+python src/enrich_roles.py
+python src/similarity.py
+python src/validate_roles.py
+```
+
+Important: avoid chaining PowerShell commands with `;` for final pipeline runs, because later commands will continue even if validation fails. Use the guarded script or explicit exit-code checks.
+
+### 4. Launch the Dashboard
+
+```bash
 streamlit run app/dashboard.py
 ```
 
-## 📂 Output Structure
-- `outputs/predictions_per_player.csv`: Full database with model predictions.
-- `outputs/shortlists/`: Targeted scouting lists (Top U21, Hidden Gems, etc.).
-- `outputs/models/`: Serialized XGBoost models and Similarity Engine.
-- `outputs/matching_report.csv`: Denominator-aware enrichment report with overall, eligible Top 5, league, method, status, release-gate, and final similarity-engine coverage sections.
-- `outputs/matching_audit.csv`: Row-level match audit with method, confidence, season, compatibility, review reason, and `enriched_available`.
-- `outputs/validation_report.json`: PASS/FAIL release-gate summary used by the similarity engine.
-- `data/processed/role_enriched_players.csv`: v1.4 role metadata layer merged onto the v1.3 similarity pool.
-- `outputs/role_enrichment_report.csv`: Role metadata coverage, distribution, and missingness report.
-- `outputs/role_validation_report.json`: PASS/FAIL role-aware validation summary.
+## 📂 Key Outputs
+
+| Output | Purpose |
+|---|---|
+| `outputs/predictions_per_player.csv` | Player-level model predictions and undervaluation estimates. |
+| `outputs/undervalued_candidates_overall.csv` | Filtered candidates for the dashboard scouting overview. |
+| `outputs/shortlists/` | Prebuilt shortlists such as top overall, U21, and under-€5M candidates. |
+| `outputs/models/similarity_engine.pkl` | Serialized role-aware similarity engine. |
+| `outputs/matching_report.csv` | Denominator-aware enrichment coverage and validation-gate summary. |
+| `outputs/matching_audit.csv` | Row-level audit trail for external advanced-stat matching. |
+| `outputs/validation_report.json` | PASS/FAIL enrichment validation report used by the guarded pipeline. |
+| `data/processed/role_enriched_players.csv` | Role metadata layer merged onto the similarity pool. |
+| `outputs/role_enrichment_report.csv` | Role metadata coverage, role distribution, and missingness report. |
+| `outputs/role_validation_report.json` | PASS/FAIL role-aware validation summary. |
+
+## 🧩 Project Structure
+
+```text
+app/
+  dashboard.py                 # Streamlit scouting dashboard
+
+src/
+  data_engineering.py           # Temporal feature construction
+  data_cleaning.py              # Cleaning and formatting
+  feature_engineering.py        # Per-90 features and encoding
+  modeling.py                   # XGBoost market value models
+  scouting.py                   # Undervalued candidate generation
+  enrich_similarity.py          # External advanced-stat matching
+  validate_enrichment.py        # Advanced-stat validation gates
+  role_mapping.py               # Role rules and compatibility matrix
+  enrich_roles.py               # player_bio role metadata integration
+  similarity.py                 # Similarity engine
+  validate_roles.py             # Role-aware validation
+
+scripts/
+  run_v1_4_role_pipeline.ps1    # Guarded role-aware pipeline runner
+
+outputs/
+  figures/
+  models/
+  shortlists/
+```
+
+## Final Interpretation
+
+This project is best understood as a data product, not only a model experiment.
+
+The prediction model estimates market value. The scouting layer turns prediction errors into candidate discovery. The similarity engine converts a shortlist into recruitment alternatives. The role-aware layer makes those alternatives more tactically realistic.
+
+The result is a reproducible football scouting workflow that can answer:
+
+> Who looks undervalued, who is statistically similar, and who actually makes sense as a tactical alternative?
