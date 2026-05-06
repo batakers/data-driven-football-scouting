@@ -1,6 +1,13 @@
 data/raw/
+data/processed/enriched_similarity_players.csv
+data/processed/role_enriched_players.csv
+outputs/kaggle_column_audit.csv
+outputs/matching_audit.csv
+outputs/role_enrichment_audit.csv
 outputs/models/
 !outputs/models/similarity_engine.pkl
+.playwright-cli/
+scratch/
 __pycache__/
 *.pyc
 .env
