@@ -659,14 +659,80 @@ def explainability_feature_label(feature: str) -> str:
         "assists_per_90_ls": "Assists / 90",
         "cards_per_90_ls": "Cards / 90",
         "previous_market_value": "Previous Market Value",
+        "pos_Goalkeeper": "Position: Goalkeeper",
+        "pos_Midfielder": "Position: Midfielder",
+        "pos_Defender": "Position: Defender",
+        "pos_Forward": "Position: Forward",
+        "pos_Other": "Position: Other",
+        "foot_left": "Preferred Foot: Left",
+        "foot_right": "Preferred Foot: Right",
+        "foot_both": "Preferred Foot: Both",
+        "foot_unknown": "Preferred Foot: Unknown",
     }
     if feature in labels:
         return labels[feature]
     if feature.startswith("pos_"):
         return f"Position: {feature.replace('pos_', '')}"
     if feature.startswith("foot_"):
-        return f"Foot: {feature.replace('foot_', '').title()}"
+        return f"Preferred Foot: {feature.replace('foot_', '').title()}"
     return feature.replace("_", " ").title()
+
+def format_feature_value(value) -> str:
+    if pd.isna(value):
+        return "N/A"
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if abs(numeric_value - round(numeric_value)) < 1e-6:
+        return f"{numeric_value:,.0f}"
+    return f"{numeric_value:.3f}"
+
+def model_driver_interpretation(model_name: str) -> str:
+    if "Performance-only" in model_name:
+        return (
+            "The performance-only model is mainly a scouting lens. Its strongest drivers should be "
+            "playing time, age, position profile, and recent output rather than historical price."
+        )
+    return (
+        "The market-aware model is mainly a benchmark. If previous market value dominates, that is "
+        "expected: the model is learning market inertia rather than pure scouting upside."
+    )
+
+def prepare_player_driver_table(player_details: pd.DataFrame, include_shap: bool = False) -> pd.DataFrame:
+    if player_details.empty:
+        return pd.DataFrame()
+
+    display = player_details.copy()
+    display["Feature"] = display["feature"].apply(explainability_feature_label)
+    display["Player Value"] = display["feature_value"].apply(format_feature_value)
+    display["Effect on Prediction"] = display["direction"].str.replace("pushes", "Pushes", regex=False)
+    display["abs_contribution"] = display["shap_contribution_log_value"].abs()
+    display = display.sort_values("abs_contribution", ascending=False)
+
+    columns = ["Feature", "Player Value", "Effect on Prediction"]
+    if include_shap:
+        display["SHAP Impact"] = display["shap_contribution_log_value"].round(4)
+        columns.append("SHAP Impact")
+    return display[columns]
+
+def player_driver_story(player_details: pd.DataFrame) -> list[str]:
+    if player_details.empty:
+        return ["No local feature drivers are available for this player."]
+
+    display = player_details.copy()
+    display["Feature"] = display["feature"].apply(explainability_feature_label)
+    display = display.sort_values("shap_contribution_log_value", ascending=False)
+    positives = display[display["shap_contribution_log_value"] > 0].head(3)
+
+    story = [
+        f"{row['Feature']} pushed the prediction higher."
+        for _, row in positives.iterrows()
+    ]
+    strongest_negative = display[display["shap_contribution_log_value"] < 0].sort_values("shap_contribution_log_value").head(1)
+    for _, row in strongest_negative.iterrows():
+        story.append(f"{row['Feature']} was the strongest downward pressure.")
+    return story or ["The model did not find a clear directional driver for this player."]
 
 
 # =========================
@@ -1016,10 +1082,7 @@ with tab_explainability:
     importance_df, explanation_candidates_df, explanation_details_df, explainability_report = load_explainability_outputs()
 
     st.markdown("### 🧠 Model Explainability")
-    st.write(
-        "SHAP explanations show which features push the model's market value prediction higher or lower. "
-        "These explanations are model diagnostics, not causal claims."
-    )
+    st.write("A plain-language view of why the market value models push predictions higher or lower.")
 
     if importance_df.empty or explanation_candidates_df.empty:
         st.warning("Explainability outputs were not found. Run `python src/explainability.py` first.")
@@ -1041,97 +1104,121 @@ with tab_explainability:
         selected_model_name = st.selectbox("Select model to explain", list(model_options.keys()))
         selected_model = model_options[selected_model_name]
 
-        st.info(selected_model["description"])
-        st.caption("SHAP values are calculated in log1p market-value space. Read them as directional model contributions, not direct euro amounts.")
+        st.info(
+            f"{selected_model['description']} SHAP values are diagnostic, not causal, and should be read as directional pressure in log market-value space."
+        )
 
         model_importance = importance_df[importance_df["model"] == selected_model["label"]].copy()
         model_importance["Feature"] = model_importance["feature"].apply(explainability_feature_label)
         model_importance = model_importance.sort_values("mean_abs_shap_log_value", ascending=False)
 
-        st.markdown("#### Global Feature Importance")
-        top_importance = model_importance.head(12).sort_values("mean_abs_shap_log_value", ascending=True)
-        fig_importance = px.bar(
-            top_importance,
-            x="mean_abs_shap_log_value",
-            y="Feature",
-            orientation="h",
-            template=PLOTLY_TEMPLATE,
-            labels={
-                "mean_abs_shap_log_value": "Mean |SHAP| Contribution (log value)",
-                "Feature": "Feature",
-            },
-            title=f"Top SHAP Drivers - {selected_model_name}",
-        )
-        st.plotly_chart(fig_importance, use_container_width=True)
+        global_tab, player_tab, technical_tab = st.tabs([
+            "Global Explanation",
+            "Player Explanation",
+            "Technical SHAP Details",
+        ])
 
-        c_plot_1, c_plot_2 = st.columns(2)
-        with c_plot_1:
-            bar_path = explainability_image_path(selected_model["bar"])
-            if bar_path:
-                st.image(bar_path, caption="SHAP bar plot")
-        with c_plot_2:
-            summary_path = explainability_image_path(selected_model["summary"])
-            if summary_path:
-                st.image(summary_path, caption="SHAP summary plot")
+        with global_tab:
+            st.markdown("#### Top Model Drivers")
+            top_importance = model_importance.head(12).sort_values("mean_abs_shap_log_value", ascending=True)
+            fig_importance = px.bar(
+                top_importance,
+                x="mean_abs_shap_log_value",
+                y="Feature",
+                orientation="h",
+                template=PLOTLY_TEMPLATE,
+                labels={
+                    "mean_abs_shap_log_value": "Mean SHAP Impact",
+                    "Feature": "Feature",
+                },
+                title=f"Top Drivers - {selected_model_name}",
+                color_discrete_sequence=["#4F8CFF"],
+            )
+            fig_importance.update_layout(
+                height=430,
+                title_x=0.02,
+                xaxis_title="Mean impact magnitude on model output",
+                yaxis_title=None,
+            )
+            st.plotly_chart(fig_importance, use_container_width=True)
 
-        display_importance = model_importance.head(10)[["Feature", "mean_abs_shap_log_value", "rank"]].copy()
-        display_importance["mean_abs_shap_log_value"] = display_importance["mean_abs_shap_log_value"].round(4)
-        display_importance = display_importance.rename(
-            columns={
-                "mean_abs_shap_log_value": "Mean |SHAP|",
-                "rank": "Rank",
-            }
-        )
-        st.dataframe(display_importance, use_container_width=True, hide_index=True)
+            st.caption(model_driver_interpretation(selected_model_name))
 
-        st.divider()
-        st.markdown("#### Local Explanation: Top Undervalued Candidates")
-        st.caption("Local player explanations are generated for Model A because it is the discovery model used for undervalued scouting.")
-
-        player_names = explanation_candidates_df["Player Name"].dropna().tolist()
-        selected_player_name = st.selectbox("Select player", player_names)
-        selected_player = explanation_candidates_df[
-            explanation_candidates_df["Player Name"] == selected_player_name
-        ].iloc[0]
-
-        e1, e2, e3 = st.columns(3)
-        with e1:
-            kpi_card("Actual Value", format_currency(selected_player["Actual Value"]))
-        with e2:
-            kpi_card("Predicted Value", format_currency(selected_player["Predicted Value"]))
-        with e3:
-            kpi_card("Undervaluation %", format_percentage(selected_player["Undervaluation %"]))
-
-        st.markdown(f"**Explanation summary:** {selected_player['Explanation Summary']}")
-
-        player_id = int(selected_player["player_id"])
-        player_details = explanation_details_df[explanation_details_df["player_id"] == player_id].copy()
-        if not player_details.empty:
-            player_details = player_details.rename(
+            display_importance = model_importance.head(10)[["Feature", "mean_abs_shap_log_value", "rank"]].copy()
+            display_importance["mean_abs_shap_log_value"] = display_importance["mean_abs_shap_log_value"].round(4)
+            display_importance = display_importance.rename(
                 columns={
-                    "feature_readable": "Feature",
-                    "feature_value": "Feature Value",
-                    "shap_contribution_log_value": "SHAP Contribution",
-                    "direction": "Direction",
+                    "mean_abs_shap_log_value": "Mean SHAP Impact",
+                    "rank": "Rank",
                 }
             )
-            player_details["SHAP Contribution"] = player_details["SHAP Contribution"].round(4)
-            st.dataframe(
-                player_details[["Feature", "Feature Value", "SHAP Contribution", "Direction"]],
-                use_container_width=True,
-                hide_index=True,
-            )
+            st.dataframe(display_importance, use_container_width=True, hide_index=True)
 
-        waterfall_path = player_waterfall_path(player_id)
-        if waterfall_path:
-            st.image(waterfall_path, caption=f"SHAP waterfall explanation for {selected_player_name}")
+        with player_tab:
+            st.markdown("#### Why the Model Flagged This Player")
+            st.caption("Local player explanations use Model A because it is the performance-only scouting model.")
 
-        with st.expander("Explainability method notes"):
-            st.markdown(
-                "- SHAP explains the model output, not real-world causality.\n"
-                "- Contributions are in log-value space because the models were trained on `log1p(market_value_in_eur)`.\n"
-                "- Model A is most useful for scouting explanations because it excludes previous market value.\n"
-                "- Model B is useful as a benchmark and should normally show previous market value as the dominant driver."
-            )
-            if explainability_report:
-                st.json(explainability_report, expanded=False)
+            player_names = explanation_candidates_df["Player Name"].dropna().tolist()
+            selected_player_name = st.selectbox("Select player", player_names)
+            selected_player = explanation_candidates_df[
+                explanation_candidates_df["Player Name"] == selected_player_name
+            ].iloc[0]
+            player_id = int(selected_player["player_id"])
+            player_details = explanation_details_df[explanation_details_df["player_id"] == player_id].copy()
+
+            e1, e2, e3 = st.columns(3)
+            with e1:
+                kpi_card("Actual Value", format_currency(selected_player["Actual Value"]))
+            with e2:
+                kpi_card("Predicted Value", format_currency(selected_player["Predicted Value"]))
+            with e3:
+                kpi_card("Undervaluation %", format_percentage(selected_player["Undervaluation %"]))
+
+            st.markdown(f"**Plain-English summary:** {selected_player['Explanation Summary']}")
+            for idx, sentence in enumerate(player_driver_story(player_details), start=1):
+                st.markdown(f"{idx}. {sentence}")
+
+            driver_table = prepare_player_driver_table(player_details, include_shap=False)
+            if not driver_table.empty:
+                st.dataframe(driver_table, use_container_width=True, hide_index=True)
+
+            waterfall_path = player_waterfall_path(player_id)
+            if waterfall_path:
+                with st.expander("View technical SHAP waterfall"):
+                    st.caption(
+                        "The waterfall is useful for technical review. Values are in log market-value space, not euros."
+                    )
+                    st.image(waterfall_path, caption=f"Technical SHAP waterfall for {selected_player_name}")
+
+        with technical_tab:
+            st.markdown("#### Technical SHAP Plots")
+            st.caption("These plots are retained for technical reviewers. The main interpretation should come from the Global and Player Explanation tabs.")
+
+            c_plot_1, c_plot_2 = st.columns(2)
+            with c_plot_1:
+                bar_path = explainability_image_path(selected_model["bar"])
+                if bar_path:
+                    st.image(bar_path, caption="SHAP bar plot")
+            with c_plot_2:
+                summary_path = explainability_image_path(selected_model["summary"])
+                if summary_path:
+                    st.image(summary_path, caption="SHAP summary plot")
+
+            detailed_driver_table = prepare_player_driver_table(player_details, include_shap=True)
+            if not detailed_driver_table.empty:
+                st.markdown(f"#### Local Feature Contributions: {selected_player_name}")
+                st.dataframe(detailed_driver_table, use_container_width=True, hide_index=True)
+
+            waterfall_path = player_waterfall_path(player_id)
+            if waterfall_path:
+                st.image(waterfall_path, caption=f"SHAP waterfall explanation for {selected_player_name}")
+
+            with st.expander("Explainability method notes", expanded=True):
+                st.markdown(
+                    "- SHAP explains the model output, not real-world causality.\n"
+                    "- Contributions are in log-value space because the models were trained on `log1p(market_value_in_eur)`.\n"
+                    "- Model A is most useful for scouting explanations because it excludes previous market value.\n"
+                    "- Model B is useful as a benchmark and should normally show previous market value as the dominant driver."
+                )
+                if explainability_report:
+                    st.json(explainability_report, expanded=False)
