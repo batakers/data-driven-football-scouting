@@ -6,10 +6,10 @@ I have successfully implemented the **Player Similarity Search** engine and inte
 
 ### 1. Similarity Engine (`src/similarity.py`)
 - **Dataset**: Uses the **full player pool** (4,852 players with 900+ minutes) from `data/processed/featured_players.csv`, merged with ML model predictions.
-- **⚠️ Important Notes & Limitations**
-- **Minutes played (>= 900)** is used as a reliability filter to ensure per-90 metrics are representative.
-- **Goalkeeper & Defender Similarity:** Results for defensive roles are based on age, height, and general activity (cards). They may be less granular than forwards due to the lack of specialized defensive metrics (saves, tackles, etc.) in the current dataset.
-- **Market Value:** Not used as a similarity feature to avoid price bias in player profiling.
+- **⚠️ Important Notes & Limitations**:
+    - **Minutes played (>= 900)** is used as a reliability filter to ensure per-90 metrics are representative.
+    - **Goalkeeper & Defender Similarity:** Results for defensive roles are based on age, height, and general activity (cards). They may be less granular than forwards due to the lack of specialized defensive metrics (saves, tackles, etc.) in the current dataset.
+    - **Market Value:** Not used as a similarity feature to avoid price bias in player profiling.
 - **Methodology**: Uses **Manual Weighted Cosine Similarity** (Heuristic Position-Aware).
 - **Position-Aware Weighting**:
     - **Forward**: High emphasis on `goals_per_90_ls` (0.35) and `assists_per_90_ls` (0.25).
