@@ -4,6 +4,6 @@
     "role_enriched_count": 20305,
     "role_metadata_available_count": 19448,
     "role_metadata_coverage": 0.9577936468850037,
-    "exact_role_checks": 260,
+    "exact_role_checks": 240,
     "compatible_role_checks": 260
 }

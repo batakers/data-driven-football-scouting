@@ -1,0 +1,87 @@
+{
+    "status": "WARN",
+    "fail_count": 0,
+    "warn_count": 6,
+    "issue_count": 6,
+    "datasets": {
+        "shortlist": {
+            "path": "outputs\\undervalued_candidates_overall.csv",
+            "exists": true,
+            "rows": 647,
+            "columns": 10
+        },
+        "predictions": {
+            "path": "outputs\\predictions_per_player.csv",
+            "exists": true,
+            "rows": 20305,
+            "columns": 9
+        },
+        "featured_players": {
+            "path": "data\\processed\\featured_players.csv",
+            "exists": true,
+            "rows": 20305,
+            "columns": 48
+        },
+        "role_enriched_players": {
+            "path": "data\\processed\\role_enriched_players.csv",
+            "exists": true,
+            "rows": 20305,
+            "columns": 268
+        },
+        "clubs": {
+            "path": "data\\raw\\clubs.csv",
+            "exists": true,
+            "rows": 796,
+            "columns": 17
+        },
+        "competitions": {
+            "path": "data\\raw\\competitions.csv",
+            "exists": true,
+            "rows": 67,
+            "columns": 11
+        },
+        "player_valuations": {
+            "path": "data\\raw\\player_valuations.csv",
+            "exists": true,
+            "rows": 616377,
+            "columns": 6
+        },
+        "appearances": {
+            "path": "data\\raw\\appearances.csv",
+            "exists": true,
+            "rows": 1862208,
+            "columns": 13
+        },
+        "validation_report": {
+            "path": "outputs\\validation_report.json",
+            "exists": true
+        },
+        "role_validation_report": {
+            "path": "outputs\\role_validation_report.json",
+            "exists": true
+        }
+    },
+    "club_league_context": {
+        "predictions": {
+            "players": 20305,
+            "complete_context": 20248,
+            "missing_context": 57,
+            "context_coverage": 0.9971928096527949
+        },
+        "shortlist": {
+            "players": 647,
+            "complete_context": 647,
+            "missing_context": 0,
+            "context_coverage": 1.0
+        }
+    },
+    "role_metadata": {
+        "rows": 20305,
+        "role_metadata_available": 19448,
+        "role_metadata_coverage": 0.9577936468850037
+    },
+    "validation_reports": {
+        "enrichment_validation_status": "PASS",
+        "role_validation_status": "PASS"
+    }
+}

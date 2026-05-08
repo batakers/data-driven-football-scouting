@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.role_mapping import COMPATIBLE_ROLE_THRESHOLD, ROLE_COMPATIBILITY
+from src.role_mapping import COMPATIBLE_ROLE_THRESHOLD, ROLE_COMPATIBILITY, explicit_role_list
 from src.similarity import PlayerSimilarity
 
 setattr(sys.modules["__main__"], "PlayerSimilarity", PlayerSimilarity)
@@ -64,9 +64,14 @@ def validate_engine_modes(errors):
         exact = engine.find_similar(target_id, top_n=20, mode="basic", role_mode="exact")
         if not exact.empty:
             exact_checks += len(exact)
-            invalid_exact = exact[exact["primary_role"] != role]
+            invalid_exact = exact[
+                ~exact.apply(
+                    lambda row: role in explicit_role_list(row.get("primary_role"), row.get("role_tags")),
+                    axis=1,
+                )
+            ]
             if not invalid_exact.empty:
-                errors.append(f"Exact Role Mode returned non-{role} candidates")
+                errors.append(f"Exact Role Mode returned candidates without explicit {role} role tag")
 
         compatible = engine.find_similar(
             target_id,

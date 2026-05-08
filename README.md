@@ -11,7 +11,14 @@ The final system combines:
 - Top 5 League advanced-stat enrichment.
 - Transfermarkt role metadata from `player_bio.csv`.
 - Role-aware similarity search with tactical compatibility and foot/side fit.
-- SHAP model explainability for global drivers and player-level valuation rationale.
+- Scout-facing rationale that explains candidate flags in plain language.
+- Temporal validation that checks historical scouting leads against future market-value movement.
+
+## Project Status
+
+This project is complete as a portfolio-ready football analytics data product.
+
+The core scope ends at Phase 7, where the scouting workflow is validated against historical future market-value movement. Future ideas such as walk-forward retraining, deployment, recruitment brief export, and contract or injury enrichment are treated as optional extensions rather than core requirements.
 
 ## 🧠 Project Story: From Market Value Prediction to Role-Aware Scouting
 
@@ -20,13 +27,14 @@ Football scouting is not only about identifying players with strong statistics. 
 1. **How much should a player be worth?**
 2. **Which players appear undervalued by the market?**
 3. **Who are realistic alternatives with similar performance and tactical roles?**
-4. **Why did the model value a player that way?**
+4. **Why should a scout review this player next?**
+5. **Did historical scouting leads gain value after they were flagged?**
 
-This project started as a market value prediction pipeline and evolved into a role-aware scouting dashboard that combines Transfermarkt market data, recent player performance, advanced Top 5 League statistics, tactical role metadata, and model explainability.
+This project started as a market value prediction pipeline and evolved into a role-aware scouting dashboard that combines Transfermarkt market data, recent player performance, advanced Top 5 League statistics, tactical role metadata, and plain-language scouting rationale.
 
 The final system does not only predict value. It supports a scouting workflow:
 
-> Identify undervalued players, compare similar alternatives, evaluate whether those alternatives make tactical sense, and explain which model signals drive the valuation.
+> Identify undervalued players, compare similar alternatives, evaluate whether those alternatives make tactical sense, explain why a player deserves manual scouting review, and check whether historical leads showed future value growth.
 
 ## 📈 Project Evolution
 
@@ -37,7 +45,8 @@ The final system does not only predict value. It supports a scouting workflow:
 | **Phase 3** | Player Similarity Search | Find statistically similar, younger, or cheaper alternatives. |
 | **Phase 4** | Advanced Stats Enrichment | Add advanced Top 5 League metrics for richer comparisons. |
 | **Phase 5** | Role-Aware Similarity | Add tactical role compatibility, role tags, and foot/side fit. |
-| **Phase 6** | Model Explainability | Add SHAP transparency for global model drivers and player-level explanations. |
+| **Phase 6** | Scouting Rationale | Translate model outputs into scout-friendly evidence, risks, and next steps. |
+| **Phase 7** | Temporal Validation | Test whether historical scouting leads gained market value after 6-12 months. |
 
 ### Phase 1 — From Raw Transfermarkt Data to Market Value Prediction
 
@@ -64,10 +73,7 @@ After identifying undervalued candidates, the next scouting question became:
 
 > If we cannot afford Player X, who plays similarly but is younger or cheaper?
 
-The third phase introduced a player similarity engine with two workflows:
-
-- **Statistical Twins:** find the closest statistical profiles.
-- **Recruitment Alternatives:** find similar players who are younger and cheaper.
+The third phase introduced a player similarity engine that ranked close statistical profiles first, then supported recruitment-style filtering for age, value, and affordability.
 
 This made the system more useful for real scouting scenarios.
 
@@ -75,7 +81,7 @@ This made the system more useful for real scouting scenarios.
 
 Basic similarity based on goals, assists, and cards worked for some players, but it was too limited for midfielders, defenders, and goalkeepers.
 
-The enrichment phase integrated advanced Top 5 League statistics such as xG, key passes, progressive actions, blocks, aerials, and goalkeeper-related indicators. It also added a validation-gated process to avoid bad external data matches.
+The enrichment phase integrated advanced Top 5 League statistics and converts them into position-specific scouting profiles such as Goal Threat, Ball Progression, Defensive Activity, Duel Strength, and Build-up Support. It also added a validation-gated process to avoid bad external data matches.
 
 This made the similarity engine more position-specific and more transparent.
 
@@ -96,26 +102,36 @@ The role-aware phase added Transfermarkt role metadata from `player_bio.csv`, en
 
 This made the system more tactically realistic.
 
-### Phase 6 — From Scouting Scores to Model Explainability
+### Phase 6 — From Scouting Scores to Scouting Rationale
 
-After the scouting and similarity workflows became more complete, the next question was interpretability:
+After the scouting and similarity workflows became more complete, the next question was usability:
 
-> Why does the model think this player should be valued higher or lower?
+> Why should a scout actually review this player?
 
-The explainability phase adds SHAP analysis for both market value models:
+The rationale phase removes technical model-debugging language from the dashboard and translates player evidence into a scouting report style:
 
-- **Model A:** explains the performance-only scouting model used for undervalued discovery.
-- **Model B:** explains the market-aware benchmark model and shows how strongly previous valuation drives accuracy.
+- **Why This Player:** plain-language explanation for an individual candidate.
+- **Key Scouting Signals:** playing time, age profile, value gap, and role context.
+- **Scout Checks Before Action:** league strength, tactical role, injury history, and transfer feasibility.
+- **Suggested Action:** prioritize review or monitor based on the value-gap threshold.
 
-This turns the project from a ranking tool into a more transparent decision-support workflow. A scout can now inspect not only who is flagged as undervalued, but also which features pushed the model prediction higher or lower.
+This turns the project from a ranking tool into a more practical decision-support workflow. A scout can now inspect not only who is flagged as undervalued, but also why that player deserves review and what must be checked next.
+
+### Phase 7 — From Scouting Leads to Outcome Validation
+
+After the dashboard could identify and explain scouting leads, the next question was whether those leads showed positive market-value movement over time.
+
+The temporal validation phase builds historical valuation snapshots, flags scouting leads using only information available at the snapshot date, and checks future market value after 6 and 12 months.
+
+This is a fixed-model retrospective signal audit, not walk-forward retraining. It does not prove causality, but it helps evaluate whether the scouting signal is useful as a prioritization tool.
 
 ## ✅ What the Final System Does
 
-The current system supports three connected scouting workflows.
+The current system supports four connected scouting workflows.
 
-### Scouting Overview
+### Find Undervalued Players
 
-The overview tab identifies undervalued candidates using the performance-only market value model.
+The first dashboard tab identifies undervalued candidates using the performance-only market value model.
 
 It helps answer:
 
@@ -124,30 +140,52 @@ It helps answer:
 - Which candidates fit age, position, value, and minutes filters?
 - Which players should be reviewed first by a scout or analyst?
 
-### Similarity Search
+### Player Alternatives
 
-The similarity tab compares a selected target player with potential alternatives.
+The alternatives tab compares a selected target player with potential replacements.
 
 It supports:
 
-- **Statistical Twins:** closest performance-profile matches.
-- **Recruitment Alternatives:** similar players who are younger and cheaper.
+- **Ranked playing-profile matches:** candidates are sorted by overall fit before recruitment filters are applied.
+- **Recruitment filters:** users can filter by max age, max current value, minimum overall fit, minimum role fit, younger-than-target, cheaper-than-target, and undervalued-only flags.
+- **Price Status:** candidates are labelled as lower cost, similar cost, or higher cost relative to the target player.
 - **Enriched Mode:** advanced-stat similarity for accepted Top 5 League matches.
 - **Basic Mode:** global fallback using core performance features.
-- **Exact Role:** candidates with the same primary role.
+- **Exact Role:** candidates with the same explicit role tag.
 - **Compatible Roles:** candidates above the tactical role-compatibility threshold.
 - **Broad Position Group:** fallback logic for broad position matching.
 
-### Model Explainability
+### Scouting Rationale
 
-The explainability tab helps interpret the market value models.
+The rationale tab explains candidate flags in non-technical scouting language.
 
 It supports:
 
-- **Global feature importance:** shows which features drive predictions across the player pool.
-- **Model A vs Model B comparison:** contrasts performance-only scouting signals against market-aware benchmark signals.
-- **Local player explanations:** explains top undervalued candidates through their strongest positive and negative SHAP drivers.
-- **Interpretability caveats:** SHAP values are shown as directional model contributions in log-value space, not direct euro amounts or causal effects.
+- **Player Rationale:** explains why a selected player is worth review.
+- **Key Scouting Signals:** highlights positive data signals such as minutes, age profile, and value gap.
+- **Scout Checks Before Action:** lists the manual checks needed before recruitment action.
+- **Evidence Table:** shows the concrete player evidence behind the rationale.
+- **Suggested Action:** labels whether the player should be prioritized or monitored.
+
+### Backtest Results
+
+The backtest tab validates historical scouting leads against future market-value outcomes.
+
+It supports:
+
+- **Historical snapshots:** replay scouting leads from fixed dates between 2021 and 2025.
+- **Future value outcomes:** checks 6-month and 12-month market-value movement.
+- **Hit rate tracking:** labels a hit when future value rises at least 25%.
+- **Eligible baseline comparison:** compares scouting leads against similar age, minutes, and value-eligible players.
+- **Segment analysis:** shows success by value gap bucket, position, age group, and market value bucket.
+
+Latest Phase 7 snapshot summary:
+
+- **Historical scouting leads:** 4,757.
+- **6-month hit rate:** 34.10%.
+- **12-month hit rate:** 44.47%.
+- **Median 12-month growth:** 14.29%.
+- **12-month lift vs eligible baseline:** +3.86 percentage points.
 
 ## 🖼️ Dashboard Preview
 
@@ -190,26 +228,33 @@ The default shortlist criteria are:
 - **Market value:** between €500,000 and €20,000,000.
 - **Undervaluation:** predicted value above current market value.
 
-## 🧠 Model Explainability
+### Temporal Validation Backtest
 
-The explainability layer uses SHAP to make the market value models easier to inspect.
+Phase 7 replays the scouting signal on historical snapshots instead of using only the latest available valuation.
 
-The focus is Model A, because it is the discovery model used for scouting. Model B is still explained as a benchmark, and its SHAP results are expected to show that previous market value is the dominant driver.
+For each snapshot date:
 
-The generated outputs include:
+- **Current value:** latest market value at or before the snapshot date.
+- **Features:** appearances and recent performance from the 365 days before the snapshot date.
+- **Prediction:** existing performance-only Model A, used as a fixed retrospective signal.
+- **Future outcomes:** nearest market valuation in the 6-month and 12-month outcome windows.
+- **Hit definition:** future value at least 25% higher than current value.
 
-- Global SHAP summary and bar plots for Model A.
-- Global SHAP summary and bar plots for Model B.
-- A feature-importance CSV comparing both models.
-- Local waterfall explanations for top undervalued candidates.
-- A hidden-gems explanation table summarizing the strongest upward and downward model drivers.
+The backtest also compares scouting leads against an eligible baseline with the same age, minutes, and market-value filters but without requiring a positive value gap.
 
-Important interpretation rule:
+## 🧠 Scouting Rationale
 
-```text
-SHAP values explain the model output in log1p market-value space.
-They should be read as directional pressure on the prediction, not direct euro contributions.
-```
+The rationale layer is a scout-facing explanation layer. It does not show technical model-debugging artifacts in the dashboard. Instead, it turns model output and player evidence into practical review notes.
+
+It explains:
+
+- **Why the player is interesting:** predicted value is higher than listed market value.
+- **Whether the sample is reliable:** minutes played are checked against scouting thresholds.
+- **Whether the age profile fits recruitment:** U21 and U25 profiles are highlighted.
+- **Whether the value gap is meaningful:** small, moderate, large, or very large gaps are labelled.
+- **What to check next:** league strength, tactical role, injuries, contract, and transfer feasibility.
+
+The intent is to support a scout's next action, not to claim automatic transfer recommendations.
 
 ## 🔍 Similarity & Role-Aware Scouting
 
@@ -269,8 +314,9 @@ The pipeline generates:
 - `outputs/validation_report.json` for enrichment validation-gate checks.
 - `outputs/role_enrichment_report.csv` for role metadata coverage.
 - `outputs/role_validation_report.json` for role-aware similarity checks.
-- `outputs/explainability/explainability_report.json` for SHAP output metadata.
-- `outputs/explainability/explainability_validation_report.json` for explainability output checks.
+- `outputs/data_quality_audit_report.json` for dataset contract, entity-key, club/league context, and value-range checks.
+- `outputs/player_context_resolution_audit.csv` for player-level Club / League resolution lineage.
+- `outputs/temporal_validation/` for Phase 7 historical snapshot outputs, success-rate tables, charts, and validation report.
 
 Key validation gates include:
 
@@ -279,11 +325,13 @@ Key validation gates include:
 - No conflicting duplicate Kaggle assignments.
 - No fuzzy-review matches accepted automatically.
 - Goalkeepers are never matched with outfield players.
-- Exact Role mode only returns the same primary role.
+- Exact Role mode only returns candidates with the same explicit role tag.
 - Compatible Roles mode only returns candidates above the role-compatibility threshold.
-- SHAP outputs are generated from feature matrices aligned to the trained model columns.
-- Local explanations are generated for top undervalued candidates from the scouting shortlist.
-- Model B explainability is expected to show `previous_market_value` as its dominant global driver.
+- Scouting rationale uses actual player rows from the shortlist or full prediction pool, not separate technical artifacts.
+- Suggested actions are derived from transparent thresholds for age, minutes, and value gap.
+- Dashboard Club / League context is audited across featured players, clubs, valuation history, and domestic appearances.
+- Temporal validation checks that snapshot features do not use appearances after the snapshot date.
+- Future-value outcomes are validated to occur after the snapshot date and inside the configured 6-month or 12-month windows.
 
 Latest validation snapshot:
 
@@ -295,13 +343,18 @@ Latest validation snapshot:
 | Position mismatch accepted | 0 |
 | Duplicate conflicting Kaggle assignments | 0 |
 | Fuzzy-review accepted | 0 |
-| Exact Role checks | 260 |
+| Exact Role checks | 240 |
 | Compatible Role checks | 260 |
 | Role metadata coverage | 95.78% |
-| Explainability report status | PASS |
-| Explainability validation status | PASS |
-| Global SHAP sample size | 5,000 |
-| Top candidate explanations | 20 |
+| Data quality audit status | WARN |
+| Shortlist Club / League coverage | 100.00% |
+| Full prediction Club / League coverage | 99.72% |
+| Temporal validation status | WARN |
+| Temporal leakage violations | 0 |
+| Temporal historical scouting leads | 4,757 |
+| Temporal 12M outcome coverage | 4,378 |
+
+The temporal validation status is marked as WARN because the audit found extreme future-growth outliers above 2,000% in 135 six-month rows and 576 twelve-month rows. There are no temporal leakage violations; the warning is retained so those valuation outliers can be inspected rather than hidden.
 
 ## ⚠️ Limitations
 
@@ -310,9 +363,20 @@ Latest validation snapshot:
 - **Top 5 League enrichment is partial by design:** enriched similarity is available only for accepted external matches; other players fall back to Basic Mode.
 - **Defensive and goalkeeper metrics remain imperfect:** even with enrichment, non-Top 5 League defenders and goalkeepers can have limited event-level data.
 - **Role metadata is heuristic:** role tags and preferred-foot fit come from Transfermarkt metadata and compatibility rules, not from tactical event tracking.
-- **SHAP is model explanation, not causality:** feature contributions describe how the trained model behaves; they do not prove real-world causal effects on market value.
-- **SHAP values are in log-value space:** because the target uses `log1p(market_value_in_eur)`, contributions should not be interpreted as direct euro increases or decreases.
+- **Scouting rationale is rule-based decision support:** it translates model outputs and player evidence into review notes, but it does not prove causality.
+- **Temporal validation is a fixed-model signal audit:** it replays the existing Model A on historical snapshots and is not the same as walk-forward retraining.
 - **Similarity results are leads, not final recommendations:** candidates should be validated by human scouting, video review, and context-specific recruitment constraints.
+
+## 🔮 Future Work
+
+The core portfolio project is considered complete at Phase 7. Future improvements are intentionally treated as optional extensions rather than requirements for the main project scope.
+
+Potential future extensions include:
+
+- **Walk-forward retraining:** retrain the model at each historical snapshot for stricter temporal validation.
+- **Deployment:** publish the dashboard as a hosted scouting demo.
+- **Recruitment brief or PDF export:** allow users to export selected candidates into scout-facing reports.
+- **Contract, injury, or league-strength enrichment:** add more real-world context that affects recruitment decisions and market value.
 
 ## 🚀 Reproducibility
 
@@ -340,11 +404,16 @@ The full role-aware pipeline can be reproduced with the guarded PowerShell runne
 
 This script runs enrichment, validation, role metadata integration, similarity engine build, and role validation in a fail-fast sequence.
 
-Then generate and validate explainability outputs:
+After the guarded pipeline completes, run the data quality audit:
 
 ```bash
-python src/explainability.py
-python src/validate_explainability.py
+python src/audit_data_quality.py
+```
+
+Then run the Phase 7 temporal validation backtest:
+
+```powershell
+.\scripts\run_phase_7_temporal_validation.ps1
 ```
 
 You can also run the core scripts manually:
@@ -360,8 +429,9 @@ python src/validate_enrichment.py
 python src/enrich_roles.py
 python src/similarity.py
 python src/validate_roles.py
-python src/explainability.py
-python src/validate_explainability.py
+python src/audit_data_quality.py
+python src/temporal_backtest.py
+python src/validate_temporal_backtest.py
 ```
 
 Important: avoid chaining PowerShell commands with `;` for final pipeline runs, because later commands will continue even if validation fails. Use the guarded script or explicit exit-code checks.
@@ -386,11 +456,12 @@ streamlit run app/dashboard.py
 | `data/processed/role_enriched_players.csv` | Role metadata layer merged onto the similarity pool. |
 | `outputs/role_enrichment_report.csv` | Role metadata coverage, role distribution, and missingness report. |
 | `outputs/role_validation_report.json` | PASS/FAIL role-aware validation summary. |
-| `outputs/explainability/shap_feature_importance.csv` | Global SHAP feature importance for both market value models. |
-| `outputs/explainability/top_hidden_gems_explanations.csv` | Local explanation summaries for top undervalued candidates. |
-| `outputs/explainability/player_explanations/` | Waterfall plots and feature contribution tables for selected candidates. |
-| `outputs/explainability/explainability_report.json` | Explainability output metadata and validation snapshot. |
-| `outputs/explainability/explainability_validation_report.json` | PASS/FAIL checks for SHAP files, feature alignment, and expected model behavior. |
+| `outputs/data_quality_audit_report.json` | Dataset-level audit summary for schema, IDs, value ranges, validation reports, and Club / League context. |
+| `outputs/data_quality_issues.csv` | Row-level issue list for data quality warnings and failures. |
+| `outputs/player_context_resolution_audit.csv` | Player-level lineage for resolving Club / League display context. |
+| `outputs/temporal_validation/temporal_backtest_candidates.csv` | Historical scouting leads with 6-month and 12-month future value outcomes. |
+| `outputs/temporal_validation/temporal_backtest_summary.csv` | Overall and snapshot-level hit rates, growth rates, and baseline comparison. |
+| `outputs/temporal_validation/temporal_validation_report.json` | PASS/FAIL temporal validation report for snapshot leakage, outcome windows, and metric consistency. |
 
 ## 🧩 Project Structure
 
@@ -410,25 +481,27 @@ src/
   enrich_roles.py               # player_bio role metadata integration
   similarity.py                 # Similarity engine
   validate_roles.py             # Role-aware validation
-  explainability.py             # SHAP model explainability
-  validate_explainability.py    # Explainability output validation
+  audit_data_quality.py          # Dataset quality and dashboard-context audit
+  temporal_backtest.py           # Historical scouting lead outcome backtest
+  validate_temporal_backtest.py  # Temporal validation checks
 
 scripts/
   run_v1_4_role_pipeline.ps1    # Guarded role-aware pipeline runner
+  run_phase_7_temporal_validation.ps1
 
 outputs/
-  explainability/
   figures/
   models/
   shortlists/
+  temporal_validation/
 ```
 
 ## Final Interpretation
 
 This project is best understood as a data product, not only a model experiment.
 
-The prediction model estimates market value. The scouting layer turns prediction errors into candidate discovery. The similarity engine converts a shortlist into recruitment alternatives. The role-aware layer makes those alternatives more tactically realistic. The explainability layer shows which model signals drive the valuation.
+The prediction model estimates market value. The scouting layer turns prediction errors into candidate discovery. The similarity engine converts a shortlist into recruitment alternatives. The role-aware layer makes those alternatives more tactically realistic. The rationale layer explains why a player deserves review in scout-friendly language. The temporal validation layer suggests that the scouting signal has modest but measurable value as a prioritization tool, especially over a 12-month horizon.
 
 The result is a reproducible football scouting workflow that can answer:
 
-> Who looks undervalued, who is statistically similar, who actually makes sense as a tactical alternative, and why did the model flag them?
+> Who looks undervalued, who is statistically similar, who actually makes sense as a tactical alternative, why should a scout review them, and did similar historical leads gain value later?

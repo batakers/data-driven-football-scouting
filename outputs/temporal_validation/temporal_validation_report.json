@@ -1,0 +1,51 @@
+{
+    "status": "WARN",
+    "fail_count": 0,
+    "warn_count": 2,
+    "issue_count": 2,
+    "snapshot_rows": 277077,
+    "candidate_rows": 4757,
+    "future_6m_available": 3721,
+    "future_12m_available": 4378,
+    "configured_snapshots": [
+        "2021-07-01",
+        "2022-01-01",
+        "2022-07-01",
+        "2023-01-01",
+        "2023-07-01",
+        "2024-01-01",
+        "2024-07-01",
+        "2025-01-01"
+    ],
+    "model_features": [
+        "age_at_valuation",
+        "minutes_last_season",
+        "goals_per_90_ls",
+        "assists_per_90_ls",
+        "cards_per_90_ls",
+        "pos_Defender",
+        "pos_Forward",
+        "pos_Goalkeeper",
+        "pos_Midfielder",
+        "pos_Other",
+        "foot_both",
+        "foot_left",
+        "foot_right",
+        "foot_unknown"
+    ],
+    "leakage_violations": 0,
+    "issues": [
+        {
+            "severity": "WARN",
+            "check": "growth_range_high_6m",
+            "message": "6m growth above 2000 pct found; inspect outliers.",
+            "count": 135
+        },
+        {
+            "severity": "WARN",
+            "check": "growth_range_high_12m",
+            "message": "12m growth above 2000 pct found; inspect outliers.",
+            "count": 576
+        }
+    ]
+}

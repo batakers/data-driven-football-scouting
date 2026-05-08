@@ -1,3 +1,6 @@
+import re
+
+
 POSITION_TO_ROLE = {
     "Goalkeeper": "GK",
     "GK": "GK",
@@ -77,20 +80,20 @@ ROLE_SIDE = {
 
 ROLE_COMPATIBILITY = {
     "GK": {"GK": 1.0},
-    "ST": {"ST": 1.0, "CF": 0.9, "LW": 0.6, "RW": 0.6},
+    "ST": {"ST": 1.0, "CF": 0.9, "LW": 0.6, "RW": 0.6, "CAM": 0.55},
     "CF": {"CF": 1.0, "ST": 0.9, "CAM": 0.65, "LW": 0.55, "RW": 0.55},
     "LW": {"LW": 1.0, "RW": 0.75, "LM": 0.70, "CAM": 0.60, "ST": 0.60},
     "RW": {"RW": 1.0, "LW": 0.75, "RM": 0.70, "CAM": 0.60, "ST": 0.60},
-    "CAM": {"CAM": 1.0, "CM": 0.75, "CF": 0.65, "LW": 0.60, "RW": 0.60},
+    "CAM": {"CAM": 1.0, "CM": 0.75, "CF": 0.65, "LW": 0.60, "RW": 0.60, "LM": 0.65, "RM": 0.65, "ST": 0.55},
     "CM": {"CM": 1.0, "CDM": 0.85, "CAM": 0.75, "LM": 0.55, "RM": 0.55},
     "CDM": {"CDM": 1.0, "CM": 0.85, "CB": 0.60},
-    "LM": {"LM": 1.0, "LW": 0.75, "LWB": 0.70, "LB": 0.65, "CM": 0.55},
-    "RM": {"RM": 1.0, "RW": 0.75, "RWB": 0.70, "RB": 0.65, "CM": 0.55},
+    "LM": {"LM": 1.0, "LW": 0.75, "RM": 0.75, "LWB": 0.70, "LB": 0.65, "CAM": 0.60, "CM": 0.55},
+    "RM": {"RM": 1.0, "RW": 0.75, "LM": 0.75, "RWB": 0.70, "RB": 0.65, "CAM": 0.60, "CM": 0.55},
     "CB": {"CB": 1.0, "LB": 0.60, "RB": 0.60, "CDM": 0.60},
-    "LB": {"LB": 1.0, "LWB": 0.90, "LM": 0.75, "CB": 0.60},
-    "RB": {"RB": 1.0, "RWB": 0.90, "RM": 0.75, "CB": 0.60},
-    "LWB": {"LWB": 1.0, "LB": 0.90, "LM": 0.85, "LW": 0.60},
-    "RWB": {"RWB": 1.0, "RB": 0.90, "RM": 0.85, "RW": 0.60},
+    "LB": {"LB": 1.0, "LWB": 0.90, "RB": 0.75, "LM": 0.75, "CB": 0.60},
+    "RB": {"RB": 1.0, "RWB": 0.90, "LB": 0.75, "RM": 0.75, "CB": 0.60},
+    "LWB": {"LWB": 1.0, "LB": 0.90, "RWB": 0.75, "LM": 0.85, "LW": 0.60},
+    "RWB": {"RWB": 1.0, "RB": 0.90, "LWB": 0.75, "RM": 0.85, "RW": 0.60},
 }
 
 BROAD_ROLE_GROUP = {
@@ -137,6 +140,124 @@ def unique_roles(*positions):
         if role != "UNKNOWN" and role not in roles:
             roles.append(role)
     return roles
+
+
+def parse_role_list(value):
+    """Parse comma/slash separated role strings and normalize to canonical role codes."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        raw_values = value
+    else:
+        text = str(value).strip()
+        if not text or text.lower() in {"nan", "none", "null", "unknown"}:
+            return []
+        raw_values = re.split(r"[,/|;]+", text)
+
+    roles = []
+    for raw_value in raw_values:
+        role = map_position_to_role(raw_value)
+        if role != "UNKNOWN" and role not in roles:
+            roles.append(role)
+    return roles
+
+
+def explicit_role_list(primary_role, role_tags):
+    roles = parse_role_list(role_tags)
+    primary = map_position_to_role(primary_role)
+    if primary != "UNKNOWN" and primary not in roles:
+        roles.insert(0, primary)
+    return roles
+
+
+def best_role_match(
+    target_primary_role,
+    target_role_tags,
+    candidate_primary_role,
+    candidate_role_tags,
+    candidate_compatible_roles=None,
+):
+    """
+    Return the strongest tactical role fit between target and candidate role profiles.
+    Explicit role tags represent actual metadata; compatible roles are heuristic fallback.
+    """
+    target_primary = map_position_to_role(target_primary_role)
+    candidate_primary = map_position_to_role(candidate_primary_role)
+    target_roles = explicit_role_list(target_primary, target_role_tags)
+    candidate_roles = explicit_role_list(candidate_primary, candidate_role_tags)
+    candidate_compatible = parse_role_list(candidate_compatible_roles)
+
+    if not target_roles or not candidate_roles:
+        return {
+            "score": 0.0,
+            "target_role": target_primary if target_primary != "UNKNOWN" else "",
+            "candidate_role": candidate_primary if candidate_primary != "UNKNOWN" else "",
+            "fit_type": "No Role Metadata",
+            "match_source": "none",
+        }
+
+    if "GK" in target_roles and any(role != "GK" for role in candidate_roles):
+        return {
+            "score": 0.0,
+            "target_role": "GK",
+            "candidate_role": candidate_primary,
+            "fit_type": "No Tactical Fit",
+            "match_source": "gk_mismatch",
+        }
+    if "GK" in candidate_roles and any(role != "GK" for role in target_roles):
+        return {
+            "score": 0.0,
+            "target_role": target_primary,
+            "candidate_role": "GK",
+            "fit_type": "No Tactical Fit",
+            "match_source": "gk_mismatch",
+        }
+
+    best = {
+        "score": 0.0,
+        "target_role": target_roles[0],
+        "candidate_role": candidate_roles[0],
+        "fit_type": "No Tactical Fit",
+        "match_source": "none",
+    }
+
+    for target_role in target_roles:
+        for candidate_role in candidate_roles:
+            score = role_compatibility_score(target_role, candidate_role)
+            if score > best["score"]:
+                if score >= 1.0 and target_role == target_primary and candidate_role == candidate_primary:
+                    fit_type = "Primary Role Match"
+                    source = "primary"
+                elif score >= 1.0:
+                    fit_type = "Shared Role Tag"
+                    source = "role_tag"
+                elif candidate_role != candidate_primary:
+                    fit_type = "Secondary Role Match"
+                    source = "secondary_role"
+                else:
+                    fit_type = "Compatible Role"
+                    source = "compatible"
+                best = {
+                    "score": float(score),
+                    "target_role": target_role,
+                    "candidate_role": candidate_role,
+                    "fit_type": fit_type,
+                    "match_source": source,
+                }
+
+    for target_role in target_roles:
+        for candidate_role in candidate_compatible:
+            score = min(role_compatibility_score(target_role, candidate_role), 0.85)
+            if score > best["score"]:
+                best = {
+                    "score": float(score),
+                    "target_role": target_role,
+                    "candidate_role": candidate_role,
+                    "fit_type": "Compatible Role",
+                    "match_source": "compatible_roles",
+                }
+
+    return best
 
 
 def compatible_roles(role, threshold=COMPATIBLE_ROLE_THRESHOLD):

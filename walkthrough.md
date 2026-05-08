@@ -21,7 +21,7 @@ I have implemented **Role-Aware Similarity Search** (v1.4), which layers Transfe
 
 ### 2. Similarity Engine Upgrade (`src/similarity.py`)
 - **Dual-Mode Architecture**:
-    - **Enriched Mode**: Uses position-specific advanced weights (e.g., xG/SCA for Forwards, PrgP/KP for Midfielders, Blocks/Aerials for Defenders).
+    - **Enriched Mode**: Converts Top 5 League raw stats into scout-facing composite profile metrics before similarity scoring.
     - **Basic Mode (Fallback)**: Uses core stats (Goals/Assists/Cards) for players outside the Top 5 league coverage.
 - **Role-Aware Layer**:
     - Adds `statistical_score`, `role_compatibility_score`, `foot_role_fit_score`, and `final_similarity_score`.
@@ -29,13 +29,13 @@ I have implemented **Role-Aware Similarity Search** (v1.4), which layers Transfe
     - Falls back to v1.3 broad position logic when role metadata is missing.
 - **Role Matching Modes**:
     - **Compatible Roles**: Default mode using a role compatibility threshold of 0.55.
-    - **Exact Role**: Requires the same primary role.
+    - **Exact Role**: Requires the same explicit role tag, so multi-position players can still match if the target role is recorded in their role tags.
     - **Broad Position Group**: Uses the v1.3 position-group behavior.
-- **Position-Specific Advanced Weights**:
-    - **Forward**: Emphasis on `Expected xG`, `SoT%`, and `Shot Creating Actions (SCA)`.
-    - **Midfielder**: Focus on `Key Passes`, `Progressive Passes`, and `Tackles Won`.
-    - **Defender**: Granular metrics for `Blocks`, `Clearances`, and `Aerial Duel %`.
-    - **Goalkeeper**: Metrics for `Pass Completion %` and `Recoveries`.
+- **Position-Specific Profile Metrics**:
+    - **Forward**: Goal Threat, Chance Creation, 1v1 Threat, Box Involvement, and Ball Progression.
+    - **Midfielder**: Ball Progression, Chance Creation, Possession Quality, Defensive Activity, and Carrying.
+    - **Defender**: Defending Volume, Duel Strength, Aerial Strength, Build-up Support, and Risk Control.
+    - **Goalkeeper**: Distribution, Recoveries, and Aerial Control. Goalkeeper comparison remains approximate because specialist shot-stopping metrics are not available.
 
 ### 3. Role Metadata Enrichment (`src/enrich_roles.py`)
 - **Transfermarkt Join**: Joins `player_bio.tmid` to `player_id`, avoiding fuzzy name matching.
@@ -46,11 +46,12 @@ I have implemented **Role-Aware Similarity Search** (v1.4), which layers Transfe
 
 ### 4. Dashboard Integration (`app/dashboard.py`)
 - **Advanced Stats Indicators**: Visual badges identify players with available enriched data.
-- **Model Selection Toggle**: Users can switch between "Enriched (Advanced Stats)" and "Basic (Core Stats)" for matched players.
-- **Role Matching Toggle**: Users can choose Compatible Roles, Exact Role, or Broad Position Group.
+- **Profile Mode Selector**: Users can switch between Advanced Profile and Standard Profile for matched players.
+- **Role Matching Selector**: Users can choose Similar Roles, Same Role Only, or Same Position Group.
+- **Recruitment Filters**: Alternatives are ranked by overall fit first, then narrowed by max age, max current value, price status, minimum fit, younger/cheaper flags, and undervalued-only filtering.
 - **Role-Aware Target Profile**: Displays primary role, role tags, foot, selected role mode, and metadata availability.
-- **Score Breakdown**: Result tables include statistical score, role score, and final match score.
-- **Dynamic Enriched Tables**: When in Enriched mode, the results table reveals advanced metrics tailored to the target position.
+- **Score Breakdown**: Result tables include playing profile match, role fit, overall fit, and price status.
+- **Dynamic Enriched Tables**: When in Enriched mode, the results table shows composite scouting profile indicators tailored to the target position.
 - **Methodology Context**: Updated tooltips to explain the provenance and limitations of the enriched data.
 
 ## Verification Results
@@ -61,7 +62,7 @@ I have implemented **Role-Aware Similarity Search** (v1.4), which layers Transfe
 - **Duplicate Gate**: 0 accepted conflicting Kaggle row assignments.
 - **Fuzzy Review Gate**: 0 accepted `fuzzy_review` rows without manual review.
 - **Role Metadata Coverage**: 95.78% across the role-enriched pool.
-- **Role Mode Checks**: Exact Role and Compatible Role validation each checked 260 returned candidates.
+- **Role Mode Checks**: Exact Role validation checked 240 returned candidates; Compatible Role validation checked 260 returned candidates.
 - **Similarity Sanity Check**: Daley Blind returns CB-compatible defender recommendations with statistical, role, foot, and final score components.
 - **Stability**: Maintained full backward compatibility for non-Top 5 league players using the v1.2 fallback logic.
 

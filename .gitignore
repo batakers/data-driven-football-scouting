@@ -6,8 +6,17 @@ outputs/matching_audit.csv
 outputs/role_enrichment_audit.csv
 outputs/models/
 !outputs/models/similarity_engine.pkl
+outputs/logs/
+.codex_streamlit*.log
 .playwright-cli/
 scratch/
+skills/
+.vscode/
+.github/
+.github/instructions/
+copilot-instructions.md
+scripts/*
+!scripts/run_phase_7_temporal_validation.ps1
 __pycache__/
 *.pyc
 .env

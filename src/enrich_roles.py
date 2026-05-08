@@ -58,7 +58,12 @@ def build_role_features(row):
     secondary_roles = [role for role in roles if role != primary_role]
 
     metadata_available = primary_role != "UNKNOWN"
-    compatible = compatible_roles(primary_role) if metadata_available else []
+    compatible = []
+    if metadata_available:
+        for role in roles:
+            for compatible_role in compatible_roles(role):
+                if compatible_role not in compatible:
+                    compatible.append(compatible_role)
 
     return pd.Series(
         {

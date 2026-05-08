@@ -1,0 +1,33 @@
+{
+    "method": "fixed_model_retrospective_signal_audit",
+    "model_path": "outputs\\models\\performance_only_model.pkl",
+    "snapshot_dates": [
+        "2021-07-01",
+        "2022-01-01",
+        "2022-07-01",
+        "2023-01-01",
+        "2023-07-01",
+        "2024-01-01",
+        "2024-07-01",
+        "2025-01-01"
+    ],
+    "candidate_rows": 4757,
+    "snapshot_rows": 277077,
+    "scouting_lead_definition": {
+        "age_max": 25,
+        "minutes_last_365_min": 900,
+        "current_market_value_min": 500000,
+        "current_market_value_max": 20000000,
+        "value_gap_min_exclusive": 0
+    },
+    "future_windows": {
+        "6m": {
+            "start_days": 150,
+            "end_days": 240
+        },
+        "12m": {
+            "start_days": 300,
+            "end_days": 450
+        }
+    }
+}
