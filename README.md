@@ -61,13 +61,13 @@ To avoid data leakage, all player performance features were built from matches p
 
 This created the foundation for detecting players whose recent statistical output appeared stronger than their current market value.
 
-### Phase 2  From Model Output to Scouting Dashboard
+### Phase 2 - From Model Output to Scouting Dashboard
 
 The first model produced useful predictions, but a static CSV shortlist was not enough for practical analysis.
 
 The second phase introduced an interactive Streamlit dashboard, allowing users to filter candidates by age, position, market value, and minutes played. This shifted the project from a modeling experiment into an interactive scouting product.
 
-### Phase 3  From Undervalued Players to Similar Alternatives
+### Phase 3 - From Undervalued Players to Similar Alternatives
 
 After identifying undervalued candidates, the next scouting question became:
 
@@ -77,7 +77,7 @@ The third phase introduced a player similarity engine that ranked close statisti
 
 This made the system more useful for real scouting scenarios.
 
-### Phase 4  From Basic Similarity to Enriched Performance Context
+### Phase 4 - From Basic Similarity to Enriched Performance Context
 
 Basic similarity based on goals, assists, and cards worked for some players, but it was too limited for midfielders, defenders, and goalkeepers.
 
@@ -85,7 +85,7 @@ The enrichment phase integrated advanced Top 5 League statistics and converts th
 
 This made the similarity engine more position-specific and more transparent.
 
-### Phase 5  From Position-Aware to Role-Aware Scouting
+### Phase 5 - From Position-Aware to Role-Aware Scouting
 
 Even enriched position-level similarity was still too broad.
 
@@ -102,7 +102,7 @@ The role-aware phase added Transfermarkt role metadata from `player_bio.csv`, en
 
 This made the system more tactically realistic.
 
-### Phase 6  From Scouting Scores to Scouting Rationale
+### Phase 6 - From Scouting Scores to Scouting Rationale
 
 After the scouting and similarity workflows became more complete, the next question was usability:
 
@@ -117,7 +117,7 @@ The rationale phase removes technical model-debugging language from the dashboar
 
 This turns the project from a ranking tool into a more practical decision-support workflow. A scout can now inspect not only who is flagged as undervalued, but also why that player deserves review and what must be checked next.
 
-### Phase 7  From Scouting Leads to Outcome Validation
+### Phase 7 - From Scouting Leads to Outcome Validation
 
 After the dashboard could identify and explain scouting leads, the next question was whether those leads showed positive market-value movement over time.
 
