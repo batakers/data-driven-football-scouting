@@ -48,7 +48,7 @@ The final system does not only predict value. It supports a scouting workflow:
 | **Phase 6** | Scouting Rationale | Translate model outputs into scout-friendly evidence, risks, and next steps. |
 | **Phase 7** | Temporal Validation | Test whether historical scouting leads gained market value after 6-12 months. |
 
-### Phase 1  From Raw Transfermarkt Data to Market Value Prediction
+### Phase 1 - From Raw Transfermarkt Data to Market Value Prediction
 
 The project began with a core machine learning question:
 
