@@ -189,7 +189,7 @@ Latest Phase 7 snapshot summary:
 
 ## 🖼️ Dashboard Preview
 
-![Scouting Dashboard Preview](https://github.com/batakers/data-driven-football-scouting/raw/main/outputs/figures/dashboard_preview.png)
+![Scouting Dashboard Preview](outputs/figures/dashboard_preview.png)
 
 The dashboard is designed as a scouting workflow rather than a model report. It separates player facts, role context, data provenance, score components, and recruitment flags so the results are easier to interpret for non-technical users.
 
