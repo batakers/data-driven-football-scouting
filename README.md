@@ -244,7 +244,7 @@ Latest Phase 7 snapshot summary:
 
 ## 🖼️ Dashboard Preview
 
-![Scouting Dashboard Preview](outputs/figures/dashboard_preview.png)
+![Scouting Dashboard Preview](outputs/figures/Screenshot 2026-05-12 165131.png)
 
 The dashboard is designed as a scouting workflow rather than a model report. It separates player facts, role context, data provenance, score components, and recruitment flags so the results are easier to interpret for non-technical users.
 
