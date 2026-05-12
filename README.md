@@ -332,8 +332,8 @@ Coverage is intentionally reported with multiple denominators:
 
 - **Overall enrichment coverage:** 8.83% across the full Transfermarkt pool.
 - **Eligible Top 5 League coverage:** 42.32% among eligible Top 5 League players.
-- **Accepted enriched matches:** 1,792.
-- **Enriched players in final similarity engine:** 1,212 after eligibility filters.
+- **Accepted enriched matches:** 1,791.
+- **Enriched players in final similarity engine:** 1,211 after eligibility filters.
 
 This distinction matters because the external Kaggle dataset covers Top 5 League players, while the Transfermarkt pool contains many players outside that coverage.
 
@@ -356,7 +356,7 @@ Final Match Score =
 + 0.05 × Foot / Side Fit
 ```
 
-Role metadata is available for **19,448 / 20,305 players (95.78%)** in the role-enriched pool.
+Role metadata is available for **19,448 / 20,304 players (95.78%)** in the role-enriched pool.
 
 ## ✅ Trust & Validation Layer
 
@@ -543,6 +543,7 @@ src/
   enrich_roles.py               # player_bio role metadata integration
   similarity.py                 # Similarity engine with profile metrics
   validate_roles.py             # Role-aware validation
+  excluded_players.py           # Retired/inactive player exclusion registry
   audit_data_quality.py          # Dataset quality and dashboard-context audit
   temporal_backtest.py           # Historical scouting lead outcome backtest
   validate_temporal_backtest.py  # Temporal validation checks
