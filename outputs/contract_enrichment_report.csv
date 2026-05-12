@@ -1,0 +1,12 @@
+contract_status,contract_status_label,contract_source,player_count
+Expired,Expired / Out of contract,player_bio,38
+Expired,Expired / Out of contract,players_csv,976
+Expiring,Expiring (<12 months),player_bio,52
+Expiring,Expiring (<12 months),players_csv,8079
+Long,Long (>36 months),player_bio,859
+Long,Long (>36 months),players_csv,5008
+Medium,Medium (24–36 months),player_bio,305
+Medium,Medium (24–36 months),players_csv,4968
+Short,Short (12–24 months),player_bio,43
+Short,Short (12–24 months),players_csv,7263
+Unknown,Unknown,unknown,11635

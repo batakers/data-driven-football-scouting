@@ -3,6 +3,9 @@ import sys
 import html
 import json
 import re
+import io
+import unicodedata
+from datetime import date
 from pathlib import Path
 import joblib
 
@@ -25,7 +28,34 @@ importlib.reload(src.similarity)
 importlib.reload(src.scouting_rationale)
 from src.similarity import PlayerSimilarity
 from src.role_mapping import COMPATIBLE_ROLE_THRESHOLD
-from src.scouting_rationale import build_scouting_signals, build_scout_checks, build_rationale_summary
+from src.scouting_rationale import build_scouting_signals, build_scout_checks, build_rationale_summary, compute_confidence_level
+from src.league_tiers import (
+    enrich_dataframe as enrich_league_tier,
+    get_tier_short,
+    get_scout_note,
+    TIER_SHORT_LABELS,
+)
+from src.enrich_contract import (
+    enrich_contract,
+    get_contract_scout_note,
+    get_contract_badge,
+    CONTRACT_STATUS_LABELS,
+)
+
+# =========================
+# Optional dependency checks
+# =========================
+try:
+    import openpyxl  # noqa: F401
+    _OPENPYXL_AVAILABLE = True
+except ImportError:
+    _OPENPYXL_AVAILABLE = False
+
+try:
+    from fpdf import FPDF
+    _FPDF_AVAILABLE = True
+except ImportError:
+    _FPDF_AVAILABLE = False
 
 
 # =========================
@@ -138,6 +168,36 @@ div[data-testid="stExpander"] {
     margin-left: 10px;
     display: inline-block;
 }
+/* ── League Tier Badges ─────────────────────────────────────────────── */
+.tier-badge {
+    padding: 2px 9px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: inline-block;
+    letter-spacing: 0.02em;
+}
+.tier-1 { background-color: #1d4ed8; color: #fff; }   /* Elite  -  blue */
+.tier-2 { background-color: #0f766e; color: #fff; }   /* Strong  -  teal */
+.tier-3 { background-color: #b45309; color: #fff; }   /* Competitive  -  amber */
+.tier-4 { background-color: #6b7280; color: #fff; }   /* Developing  -  grey */
+
+/* ── Contract Status Badges ─────────────────────────────────────────── */
+.contract-badge {
+    padding: 2px 9px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: inline-block;
+    letter-spacing: 0.02em;
+    margin-left: 6px;
+}
+.contract-expiring { background-color: #dc2626; color: #fff; }  /* red  -  urgent */
+.contract-short    { background-color: #ea580c; color: #fff; }  /* orange */
+.contract-medium   { background-color: #ca8a04; color: #fff; }  /* yellow-dark */
+.contract-long     { background-color: #16a34a; color: #fff; }  /* green */
+.contract-expired  { background-color: #7c3aed; color: #fff; }  /* purple */
+.contract-unknown  { background-color: #6b7280; color: #fff; }  /* grey */
 .target-panel {
     background: linear-gradient(135deg, rgba(37, 99, 235, 0.10), rgba(15, 23, 42, 0.02));
     border: 1px solid rgba(37, 99, 235, 0.24);
@@ -162,6 +222,93 @@ div[data-testid="stExpander"] {
     opacity: 0.72;
     font-size: 0.88rem;
 }
+
+/* ── Player Hero (compact header with name + badges) ────────────────── */
+.player-hero {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(15, 23, 42, 0.02));
+    border: 1px solid rgba(37, 99, 235, 0.22);
+    border-radius: 14px;
+    padding: 14px 18px;
+    margin: 8px 0 14px 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px 14px;
+}
+.player-hero .hero-name {
+    color: var(--text-color);
+    font-size: 1.55rem;
+    font-weight: 800;
+    line-height: 1.1;
+    margin-right: 6px;
+}
+.player-hero .hero-meta {
+    color: var(--text-color);
+    opacity: 0.78;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+.player-hero .hero-meta .dot {
+    opacity: 0.5;
+    margin: 0 4px;
+}
+
+/* ── Info Line (compact row: chips + caption, no cards) ─────────────── */
+.info-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    align-items: center;
+    color: var(--text-color);
+    font-size: 0.92rem;
+    padding: 6px 0 12px 0;
+    opacity: 0.88;
+}
+.info-line .info-chip {
+    border: 1px solid rgba(100, 116, 139, 0.28);
+    background: rgba(148, 163, 184, 0.10);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 0.86rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.info-line .info-chip .chip-label {
+    opacity: 0.65;
+    font-weight: 500;
+}
+
+/* ── Form Strip (single compact row for form trend) ─────────────────── */
+.form-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    align-items: center;
+    padding: 10px 14px;
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid rgba(100, 116, 139, 0.20);
+    border-radius: 10px;
+    margin: 6px 0 14px 0;
+    font-size: 0.92rem;
+}
+.form-strip .form-label {
+    font-weight: 700;
+    color: var(--text-color);
+}
+.form-strip .form-metric {
+    color: var(--text-color);
+    opacity: 0.82;
+}
+.form-strip .form-metric b {
+    opacity: 1;
+    font-weight: 700;
+}
+.form-strip.trend-rising    { border-left: 4px solid #16a34a; }
+.form-strip.trend-stable    { border-left: 4px solid #ca8a04; }
+.form-strip.trend-declining { border-left: 4px solid #dc2626; }
+.form-strip.trend-unknown   { border-left: 4px solid #6b7280; }
 .chip-row {
     display: flex;
     flex-wrap: wrap;
@@ -198,6 +345,111 @@ def kpi_card(label: str, value: str) -> None:
         unsafe_allow_html=True,
     )
 
+def render_player_hero(
+    name: str,
+    badges_html: str = "",
+    meta_items: list[str] | None = None,
+) -> None:
+    """Render a compact player hero strip with name, badges, and inline metadata.
+
+    Replaces 4-8 redundant KPI cards with a single dense header band.
+    """
+    meta_parts = []
+    for i, item in enumerate(meta_items or []):
+        if not item:
+            continue
+        if i > 0:
+            meta_parts.append('<span class="dot">·</span>')
+        meta_parts.append(html.escape(str(item)))
+    meta_html = "".join(meta_parts)
+    st.markdown(
+        f"""
+        <div class="player-hero">
+            <div class="hero-name">{html.escape(str(name))}</div>
+            {badges_html}
+            <div class="hero-meta">{meta_html}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def render_info_line(pairs: list[tuple[str, str]]) -> None:
+    """Render an inline chip row where each chip shows a compact label + value.
+
+    Use this for secondary context info (Position, Age, Club) that doesn't
+    warrant dedicated KPI cards.
+    """
+    chips = []
+    for label, value in pairs:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        chips.append(
+            f'<span class="info-chip">'
+            f'<span class="chip-label">{html.escape(str(label))}:</span>'
+            f' {html.escape(str(value))}'
+            f'</span>'
+        )
+    if chips:
+        st.markdown(
+            f'<div class="info-line">{"".join(chips)}</div>',
+            unsafe_allow_html=True,
+        )
+
+def render_form_strip(
+    form_val: str,
+    goals_delta,
+    assists_delta,
+    mins_ratio,
+) -> None:
+    """Render a single-row form trend strip to replace 4 redundant KPI cards."""
+    trend_class_map = {
+        "Rising":    "trend-rising",
+        "Stable":    "trend-stable",
+        "Declining": "trend-declining",
+    }
+    trend_class = trend_class_map.get(str(form_val), "trend-unknown")
+    form_icon = {
+        "Rising": "↑",
+        "Stable": "→",
+        "Declining": "↓",
+        "Insufficient Data": " - ",
+    }.get(str(form_val), " - ")
+
+    def _fmt_signed(v, fmt=".2f", suffix=""):
+        if v is None:
+            return "N/A"
+        try:
+            fv = float(v)
+            if pd.isna(fv):
+                return "N/A"
+            return f"{fv:+{fmt}}{suffix}"
+        except (TypeError, ValueError):
+            return "N/A"
+
+    def _fmt_ratio(v):
+        if v is None:
+            return "N/A"
+        try:
+            fv = float(v)
+            if pd.isna(fv):
+                return "N/A"
+            return f"{fv:.2f}x"
+        except (TypeError, ValueError):
+            return "N/A"
+
+    st.markdown(
+        f"""
+        <div class="form-strip {trend_class}">
+            <div class="form-label">{form_icon} Form: {html.escape(str(form_val))}</div>
+            <div class="form-metric">Goals/90 <b>{_fmt_signed(goals_delta)}</b></div>
+            <div class="form-metric">Assists/90 <b>{_fmt_signed(assists_delta)}</b></div>
+            <div class="form-metric">Minutes <b>{_fmt_ratio(mins_ratio)}</b></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.caption("Form compares the last 6 months to the previous 6 months · requires ≥450 minutes per window.")
+
 def methodology_box(message: str) -> None:
     st.markdown(
         f"""
@@ -218,12 +470,44 @@ def disclaimer_box(message: str) -> None:
         unsafe_allow_html=True,
     )
 
+def league_tier_badge(competition_id: str | None, label: str | None = None) -> str:
+    """Return an HTML badge string for a league tier. Safe to embed in st.markdown."""
+    tier = get_tier_short(competition_id)
+    tier_num = {"Elite": 1, "Strong": 2, "Competitive": 3, "Developing": 4}.get(tier, 4)
+    display = html.escape(label or tier)
+    return f'<span class="tier-badge tier-{tier_num}">{display}</span>'
+
+def contract_status_badge(status: str | None) -> str:
+    """Return an HTML badge string for a contract status. Safe to embed in st.markdown."""
+    if not status or pd.isna(status):
+        status = "Unknown"
+    css_map = {
+        "Expiring": "contract-expiring",
+        "Short":    "contract-short",
+        "Medium":   "contract-medium",
+        "Long":     "contract-long",
+        "Expired":  "contract-expired",
+        "Unknown":  "contract-unknown",
+    }
+    css_class = css_map.get(status, "contract-unknown")
+    badge_text = get_contract_badge(status)
+    return f'<span class="contract-badge {css_class}">{html.escape(badge_text)}</span>'
+
 def scalar_bool(value) -> bool:
     if pd.isna(value):
         return False
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"true", "1", "yes"}
+
+def _safe_float(value, default: float = 0.0) -> float:
+    """Safely convert a value to float, returning default on failure."""
+    try:
+        v = float(value)
+        import math
+        return default if math.isnan(v) else v
+    except (TypeError, ValueError):
+        return default
 
 def format_stats_season(value) -> str:
     if pd.isna(value):
@@ -512,6 +796,252 @@ def safe_filename_label(value, fallback: str = "player") -> str:
     label = re.sub(r"[^A-Za-z0-9_-]+", "_", label)
     return label.strip("_") or fallback
 
+
+# =========================
+# Phase 12  -  Export helpers
+# =========================
+
+def _ascii_safe(text: str) -> str:
+    """Normalize unicode text to ASCII-safe string for PDF output."""
+    return unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode("ascii")
+
+
+def build_excel_bytes(
+    data_df: pd.DataFrame,
+    sheet_name: str = "Shortlist",
+    metadata_rows: list[dict] | None = None,
+) -> bytes:
+    """
+    Build a multi-sheet Excel file in memory and return raw bytes.
+    Requires openpyxl. Returns None if unavailable.
+    """
+    if not _OPENPYXL_AVAILABLE:
+        return None
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        data_df.to_excel(writer, sheet_name=sheet_name, index=False)
+        if metadata_rows:
+            meta_df = pd.DataFrame(metadata_rows)
+            meta_df.to_excel(writer, sheet_name="Metadata", index=False)
+    return buf.getvalue()
+
+
+def build_shortlist_excel(
+    df: pd.DataFrame,
+    active_filters: dict | None = None,
+) -> bytes | None:
+    """
+    Build the full shortlist Excel export with all Phase 8-11 columns and a metadata sheet.
+    """
+    if not _OPENPYXL_AVAILABLE:
+        return None
+
+    export_df = add_download_context_columns(df).copy()
+
+    # Ensure Phase 8-11 columns are present
+    phase_cols = [
+        "league_tier_short",
+        "contract_status_label",
+        "contract_months_remaining",
+        "form_trend",
+        "form_trend_goals",
+        "form_trend_assists",
+    ]
+    for col in phase_cols:
+        if col not in export_df.columns:
+            export_df[col] = None
+
+    # Build metadata sheet
+    today_str = date.today().isoformat()
+    filter_summary = "; ".join(
+        f"{k}={v}" for k, v in (active_filters or {}).items()
+    ) or "None"
+    metadata_rows = [
+        {"Field": "Export Date", "Value": today_str},
+        {"Field": "Active Filters", "Value": filter_summary},
+        {"Field": "Total Players", "Value": str(len(export_df))},
+        {
+            "Field": "Methodology Note",
+            "Value": (
+                "Players are ranked by value gap (predicted value / current market value). "
+                "League tier, contract status, and form trend are enrichment layers from Phases 8-11. "
+                "This export is a statistical scouting lead  -  validate with professional human scouting."
+            ),
+        },
+    ]
+    return build_excel_bytes(export_df, sheet_name="Shortlist", metadata_rows=metadata_rows)
+
+
+def build_similarity_excel(
+    df: pd.DataFrame,
+    target_name: str,
+) -> bytes | None:
+    """Build the similarity comparison Excel export."""
+    if not _OPENPYXL_AVAILABLE:
+        return None
+    export_df = add_download_context_columns(df).copy()
+    today_str = date.today().isoformat()
+    metadata_rows = [
+        {"Field": "Export Date", "Value": today_str},
+        {"Field": "Target Player", "Value": target_name},
+        {"Field": "Total Alternatives", "Value": str(len(export_df))},
+        {
+            "Field": "Methodology Note",
+            "Value": (
+                "Similarity scores combine statistical profile match, role compatibility, and foot-side fit. "
+                "Market value is used for post-match filtering only, not for similarity calculation."
+            ),
+        },
+    ]
+    return build_excel_bytes(export_df, sheet_name="Alternatives", metadata_rows=metadata_rows)
+
+
+def build_scouting_pdf(
+    player_name: str,
+    row: pd.Series,
+    rationale_text: str,
+    signals_df: pd.DataFrame,
+    scout_checks: list[str],
+) -> bytes | None:
+    """
+    Generate a clean, printable PDF scouting brief for a single player.
+    Returns raw bytes or None if fpdf2 is unavailable.
+    """
+    if not _FPDF_AVAILABLE:
+        return None
+
+    def s(text) -> str:
+        """ASCII-safe string for PDF."""
+        return _ascii_safe(str(text) if text is not None else "")
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_margins(18, 15, 18)
+
+    # ── Header ──────────────────────────────────────────────────────────────
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.cell(0, 10, s(player_name), ln=True)
+
+    position = s(row.get("position_group_raw", "N/A"))
+    club = s(current_club_display_label(row))
+    league = s(current_league_label(row))
+    tier_short = s(row.get("league_tier_short", get_tier_short(row.get("current_club_domestic_competition_id"))))
+    contract_status = s(row.get("contract_status", "Unknown"))
+    contract_badge_text = s(get_contract_badge(contract_status))
+
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 7, f"{position}  |  {club}  |  {league}  |  League: {tier_short}  |  Contract: {contract_badge_text}", ln=True)
+    pdf.ln(4)
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_line_width(0.5)
+    pdf.line(18, pdf.get_y(), 192, pdf.get_y())
+    pdf.ln(5)
+
+    # ── Section 1: Key Stats ─────────────────────────────────────────────────
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, "1. Key Stats", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+
+    age_val = row.get("age_at_valuation", None)
+    mins_val = row.get("minutes_last_season", None)
+    curr_val = row.get("target_market_value", None)
+    pred_val = row.get("predicted_value", None)
+    gap_val = row.get("undervalued_pct", None)
+    form_val = row.get("form_trend", "Insufficient Data")
+
+    def _fmt_eur(v):
+        try:
+            return f"EUR {float(v):,.0f}"
+        except (TypeError, ValueError):
+            return "N/A"
+
+    def _fmt_pct(v):
+        try:
+            return f"{float(v) * 100:.1f}%"
+        except (TypeError, ValueError):
+            return "N/A"
+
+    stats_rows = [
+        ("Age", f"{float(age_val):.1f}" if age_val is not None and not pd.isna(age_val) else "N/A"),
+        ("Minutes (Last Season)", f"{float(mins_val):,.0f}" if mins_val is not None and not pd.isna(mins_val) else "N/A"),
+        ("Current Market Value", _fmt_eur(curr_val)),
+        ("Estimated Value", _fmt_eur(pred_val)),
+        ("Value Gap", _fmt_pct(gap_val)),
+        ("Form Trend", s(form_val)),
+    ]
+    col_w = 85
+    for label, value in stats_rows:
+        pdf.cell(col_w, 6, s(label) + ":", border=0)
+        pdf.cell(0, 6, s(value), ln=True)
+    pdf.ln(4)
+
+    # ── Section 2: Rationale Summary ─────────────────────────────────────────
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, "2. Scouting Rationale", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    # Strip markdown bold markers for clean PDF text
+    clean_rationale = re.sub(r"\*\*(.+?)\*\*", r"\1", rationale_text)
+    clean_rationale = re.sub(r"#+\s*", "", clean_rationale)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(0, 6, s(clean_rationale))
+    pdf.ln(4)
+
+    # ── Section 3: Key Scouting Signals ──────────────────────────────────────
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, "3. Key Scouting Signals", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    if signals_df.empty:
+        pdf.cell(0, 6, "No scouting signals available.", ln=True)
+    else:
+        # Table header
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(55, 6, "Signal", border="B")
+        pdf.cell(55, 6, "Value", border="B")
+        pdf.cell(0, 6, "Scout Interpretation", border="B", ln=True)
+        pdf.set_font("Helvetica", "", 9)
+        for _, sig_row in signals_df.iterrows():
+            signal_text = s(sig_row.get("Signal", ""))
+            value_text = s(sig_row.get("Value", ""))
+            interp_text = s(sig_row.get("Scout Interpretation", ""))
+            # Truncate long interpretation to fit
+            if len(interp_text) > 60:
+                interp_text = interp_text[:57] + "..."
+            pdf.cell(55, 5, signal_text[:30], border=0)
+            pdf.cell(55, 5, value_text[:30], border=0)
+            pdf.cell(0, 5, interp_text, ln=True)
+    pdf.ln(4)
+
+    # ── Section 4: Scout Checks Before Action ────────────────────────────────
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, "4. Scout Checks Before Action", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    if not scout_checks:
+        pdf.cell(0, 6, "No specific checks flagged.", ln=True)
+    else:
+        # Explicitly reset x to left margin before each multi_cell to avoid
+        # cumulative x-drift from previous cells that causes
+        # "Not enough horizontal space" errors on longer lines.
+        for check in scout_checks:
+            bullet_line = f"- {s(check)}"
+            pdf.set_x(pdf.l_margin)
+            pdf.multi_cell(0, 5, bullet_line)
+    pdf.ln(4)
+
+    # ── Footer ───────────────────────────────────────────────────────────────
+    pdf.set_y(-20)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_draw_color(180, 180, 180)
+    pdf.line(18, pdf.get_y(), 192, pdf.get_y())
+    pdf.ln(2)
+    pdf.cell(
+        0, 5,
+        f"Generated by Football Talent Scouting Dashboard  |  {date.today().isoformat()}",
+        align="C",
+    )
+
+    return bytes(pdf.output())
+
 def calculate_scout_priority(row):
     try:
         age = row.get("age_at_valuation", 99)
@@ -561,10 +1091,14 @@ def build_overview_display_table(df: pd.DataFrame) -> pd.DataFrame:
     display_cols = [
         "name",
         "Club / League",
+        "league_tier_short",       # Phase 8
+        "contract_badge",          # Phase 9
+        "form_trend",              # Phase 11
         "age_at_valuation",
         "position_group_raw",
         "primary_role",
         "minutes_last_season",
+        "key_stat",                # Contextual per-position stat
         "target_market_value",
         "predicted_value",
         "undervalued_pct",
@@ -577,6 +1111,68 @@ def build_overview_display_table(df: pd.DataFrame) -> pd.DataFrame:
         display_df["primary_role"] = display_df["position_group_raw"]
     elif "primary_role" in display_df.columns:
         display_df["primary_role"] = display_df["primary_role"].fillna(display_df["position_group_raw"])
+
+    # Phase 8: backfill league_tier_short if missing
+    if "league_tier_short" not in display_df.columns:
+        display_df["league_tier_short"] = display_df.get(
+            "current_club_domestic_competition_id", pd.Series(dtype=str)
+        ).apply(get_tier_short)
+
+    # Phase 9: backfill contract_badge if missing
+    if "contract_badge" not in display_df.columns:
+        display_df["contract_badge"] = display_df.get(
+            "contract_status", pd.Series(dtype=str)
+        ).apply(get_contract_badge)
+
+    # Phase 11: backfill form_trend if missing
+    if "form_trend" not in display_df.columns:
+        display_df["form_trend"] = "Insufficient Data"
+
+    # Map form_trend to arrow indicator for display
+    form_arrow_map = {
+        "Rising":            "↑ Rising",
+        "Stable":            "→ Stable",
+        "Declining":         "↓ Declining",
+        "Insufficient Data": " -  N/A",
+    }
+    display_df["form_trend"] = display_df["form_trend"].map(form_arrow_map).fillna(" -  N/A")
+
+    # Build contextual "Key Stat" per position
+    def _build_key_stat(row):
+        pos = row.get("position_group_raw", "")
+        goals = _safe_float(row.get("goals_per_90_ls", 0))
+        assists = _safe_float(row.get("assists_per_90_ls", 0))
+        cards = _safe_float(row.get("cards_per_90_ls", 0))
+        mins = _safe_float(row.get("minutes_last_season", 0))
+
+        if pos == "Forward":
+            if goals >= 0.3:
+                return f"{goals:.2f} goals/90"
+            elif assists >= 0.2:
+                return f"{goals + assists:.2f} G+A/90"
+            else:
+                return f"{goals + assists:.2f} G+A/90"
+        elif pos == "Midfielder":
+            ga = goals + assists
+            if assists >= 0.15:
+                return f"{assists:.2f} assists/90"
+            elif ga > 0:
+                return f"{ga:.2f} G+A/90"
+            else:
+                return f"{mins:,.0f} min (creative)"
+        elif pos == "Defender":
+            if cards <= 0.15 and mins >= 1500:
+                return f"{mins:,.0f} min · clean"
+            elif cards > 0:
+                return f"{mins:,.0f} min · {cards:.2f} cards/90"
+            else:
+                return f"{mins:,.0f} min"
+        elif pos == "Goalkeeper":
+            return f"{mins:,.0f} min starter"
+        else:
+            return f"{mins:,.0f} min"
+
+    display_df["key_stat"] = display_df.apply(_build_key_stat, axis=1)
 
     display_df = display_df[available_cols].copy()
 
@@ -597,10 +1193,14 @@ def build_overview_display_table(df: pd.DataFrame) -> pd.DataFrame:
     return display_df.rename(
         columns={
             "name": "Player Name",
+            "league_tier_short": "League Tier",  # Phase 8
+            "contract_badge": "Contract",         # Phase 9
+            "form_trend": "Form",                 # Phase 11
             "age_at_valuation": "Age",
             "position_group_raw": "Position",
             "primary_role": "Primary Role",
             "minutes_last_season": "Minutes",
+            "key_stat": "Key Stat",
             "target_market_value": "Current Value",
             "predicted_value": "Estimated Value",
             "undervalued_pct": "Value Gap",
@@ -669,12 +1269,26 @@ def build_similarity_display_table(res_df: pd.DataFrame, target_position: str, m
     table["Foot"] = table["foot"].fillna("N/A").str.title() if "foot" in table.columns else "N/A"
     table["Club / League"] = table.apply(club_league_label, axis=1)
 
+    # Phase 8: league tier for similarity candidates
+    if "league_tier_short" not in table.columns:
+        table["league_tier_short"] = table.get(
+            "current_club_domestic_competition_id", pd.Series(dtype=str)
+        ).apply(get_tier_short)
+    table["League Tier"] = table["league_tier_short"].fillna(" - ")
+
+    # Phase 9: contract status for similarity candidates
+    if "contract_badge" not in table.columns:
+        table["contract_badge"] = table.get(
+            "contract_status", pd.Series(dtype=str)
+        ).apply(get_contract_badge)
+    table["Contract"] = table["contract_badge"].fillna("❓ Unknown")
+
     table["Cheaper?"] = table["is_cheaper"].apply(lambda x: "✅ Yes" if x else "❌ No")
     table["Younger?"] = table["is_younger"].apply(lambda x: "✅ Yes" if x else "❌ No")
-    table["Undervalued?"] = table["is_undervalued"].apply(lambda x: "💎 Yes" if x else "— No")
+    table["Undervalued?"] = table["is_undervalued"].apply(lambda x: "💎 Yes" if x else " -  No")
 
     base_cols = [
-        "name", "Club / League", "Primary Role", "Role Tags",
+        "name", "Club / League", "League Tier", "Contract", "Primary Role", "Role Tags",
         "Matched As", "Role Fit Type", "Foot", "Age", "Age Diff",
     ]
     value_cols = [
@@ -911,7 +1525,18 @@ def load_scouting_data() -> pd.DataFrame:
     ]
     for file_path in candidate_paths:
         if os.path.exists(file_path):
-            return pd.read_csv(file_path)
+            df = pd.read_csv(file_path)
+            # Phase 8: ensure league tier columns are present
+            # (backfill for files generated before Phase 8 pipeline run)
+            if "league_tier" not in df.columns:
+                df = enrich_league_tier(df, competition_col="current_club_domestic_competition_id")
+            # Phase 9: ensure contract columns are present
+            if "contract_status" not in df.columns:
+                df = enrich_contract(df)
+            # Phase 11: ensure form_trend column is present
+            if "form_trend" not in df.columns:
+                df["form_trend"] = "Insufficient Data"
+            return df
     return pd.DataFrame()
 
 @st.cache_data
@@ -919,7 +1544,17 @@ def load_all_predictions() -> pd.DataFrame:
     """Load the full modeled player pool for rationale search."""
     pred_path = os.path.join("outputs", "predictions_per_player.csv")
     if os.path.exists(pred_path):
-        return pd.read_csv(pred_path)
+        df = pd.read_csv(pred_path)
+        # Phase 8: ensure league tier columns are present
+        if "league_tier" not in df.columns:
+            df = enrich_league_tier(df, competition_col="current_club_domestic_competition_id")
+        # Phase 9: ensure contract columns are present
+        if "contract_status" not in df.columns:
+            df = enrich_contract(df)
+        # Phase 11: ensure form_trend column is present
+        if "form_trend" not in df.columns:
+            df["form_trend"] = "Insufficient Data"
+        return df
     return pd.DataFrame()
 
 @st.cache_data
@@ -956,7 +1591,18 @@ def load_temporal_backtest_outputs() -> dict:
 
 @st.cache_data
 def load_current_club_context() -> pd.DataFrame:
-    """Load current Transfermarkt club context for display-only dashboard enrichment."""
+    """Load pre-computed club context for display-only dashboard enrichment.
+
+    Uses the lightweight pre-computed file (data/processed/club_context.csv)
+    instead of loading large raw files (appearances.csv, player_valuations.csv)
+    at runtime. This reduces dashboard startup from ~170 MB to <1 MB of I/O.
+    """
+    # Prefer pre-computed context (generated by precompute_context.py or pipeline)
+    precomputed_path = os.path.join("data", "processed", "club_context.csv")
+    if os.path.exists(precomputed_path):
+        return pd.read_csv(precomputed_path)
+
+    # Fallback: extract from featured_players if pre-computed file is missing
     context_path = os.path.join("data", "processed", "featured_players.csv")
     if not os.path.exists(context_path):
         return pd.DataFrame()
@@ -967,91 +1613,8 @@ def load_current_club_context() -> pd.DataFrame:
         "current_club_domestic_competition_id",
     ]
     df_context = pd.read_csv(context_path)
-    df_context = df_context[[col for col in context_cols + ["current_club_id"] if col in df_context.columns]].copy()
-
-    clubs_path = os.path.join("data", "raw", "clubs.csv")
-    if os.path.exists(clubs_path) and "current_club_id" in df_context.columns:
-        clubs = pd.read_csv(clubs_path)
-        club_cols = ["club_id", "name", "domestic_competition_id"]
-        clubs = clubs[[col for col in club_cols if col in clubs.columns]].drop_duplicates(subset=["club_id"])
-        df_context = df_context.merge(
-            clubs,
-            left_on="current_club_id",
-            right_on="club_id",
-            how="left",
-        )
-        if "name" in df_context.columns:
-            df_context["current_club_name"] = df_context["current_club_name"].combine_first(df_context["name"])
-        if "domestic_competition_id" in df_context.columns:
-            df_context["current_club_domestic_competition_id"] = (
-                df_context["current_club_domestic_competition_id"]
-                .combine_first(df_context["domestic_competition_id"])
-            )
-
-    valuations_path = os.path.join("data", "raw", "player_valuations.csv")
-    if os.path.exists(valuations_path):
-        valuation_cols = [
-            "player_id",
-            "date",
-            "current_club_name",
-            "player_club_domestic_competition_id",
-        ]
-        valuations = pd.read_csv(valuations_path, usecols=lambda col: col in valuation_cols)
-        if {"player_id", "date"}.issubset(valuations.columns):
-            valuations["date"] = pd.to_datetime(valuations["date"], errors="coerce")
-            latest_valuations = (
-                valuations.sort_values(by="date")
-                .dropna(subset=["player_id"])
-                .drop_duplicates(subset=["player_id"], keep="last")
-            )
-            latest_valuations = latest_valuations.rename(
-                columns={
-                    "current_club_name": "valuation_club_name",
-                    "player_club_domestic_competition_id": "valuation_competition_id",
-                }
-            )
-            df_context = df_context.merge(
-                latest_valuations[[
-                    col for col in ["player_id", "valuation_club_name", "valuation_competition_id"]
-                    if col in latest_valuations.columns
-                ]],
-                on="player_id",
-                how="left",
-            )
-            if "valuation_club_name" in df_context.columns:
-                df_context["current_club_name"] = df_context["current_club_name"].combine_first(df_context["valuation_club_name"])
-            if "valuation_competition_id" in df_context.columns:
-                df_context["current_club_domestic_competition_id"] = (
-                    df_context["current_club_domestic_competition_id"]
-                    .combine_first(df_context["valuation_competition_id"])
-                )
-
-    appearances_path = os.path.join("data", "raw", "appearances.csv")
-    if os.path.exists(appearances_path):
-        appearance_cols = ["player_id", "date", "competition_id"]
-        appearances = pd.read_csv(appearances_path, usecols=lambda col: col in appearance_cols)
-        if {"player_id", "date", "competition_id"}.issubset(appearances.columns):
-            appearances["date"] = pd.to_datetime(appearances["date"], errors="coerce")
-            appearances = appearances[
-                appearances["competition_id"].astype(str).isin(set(LEAGUE_LABELS))
-            ].copy()
-            latest_comp = (
-                appearances.sort_values(by="date")
-                .dropna(subset=["player_id"])
-                .drop_duplicates(subset=["player_id"], keep="last")
-                .rename(columns={"competition_id": "appearance_competition_id"})
-            )
-            df_context = df_context.merge(
-                latest_comp[["player_id", "appearance_competition_id"]],
-                on="player_id",
-                how="left",
-            )
-            df_context["current_club_domestic_competition_id"] = (
-                df_context["current_club_domestic_competition_id"]
-                .combine_first(df_context["appearance_competition_id"])
-            )
-
-    return df_context[[col for col in context_cols if col in df_context.columns]].copy()
+    available = [col for col in context_cols if col in df_context.columns]
+    return df_context[available].drop_duplicates(subset=["player_id"]).copy()
 
 def load_similarity_engine():
     """Load the similarity search model."""
@@ -1124,12 +1687,49 @@ with tab_scouting:
                 min(max(900, min_mins), max_mins),
             )
 
+        # Phase 8: League Tier filter
+        filter_col_5, filter_col_6 = st.columns([1.2, 1])
+        with filter_col_5:
+            tier_options = {
+                "All Tiers": [1, 2, 3, 4],
+                "Tier 1  -  Elite only": [1],
+                "Tier 1 + 2 (Elite & Strong)": [1, 2],
+                "Tier 3 + 4 (Competitive & Developing)": [3, 4],
+            }
+            selected_tier_label = st.selectbox(
+                "League Tier",
+                options=list(tier_options.keys()),
+                index=0,
+                help="Filter candidates by the competitive level of their current league.",
+            )
+            selected_tiers = tier_options[selected_tier_label]
+
+        # Phase 9: Contract Status filter
+        with filter_col_6:
+            contract_filter_options = ["All Contracts"] + list(CONTRACT_STATUS_LABELS.values())
+            selected_contract_label = st.selectbox(
+                "Contract Status",
+                options=contract_filter_options,
+                index=0,
+                help="Filter by contract situation. 'Expiring' players may be available at lower cost.",
+            )
+            # Map display label back to status key
+            label_to_key = {v: k for k, v in CONTRACT_STATUS_LABELS.items()}
+            selected_contract_key = label_to_key.get(selected_contract_label, None)
+
         # Apply Filters
+        contract_mask = (
+            df["contract_status"] == selected_contract_key
+            if selected_contract_key and "contract_status" in df.columns
+            else pd.Series(True, index=df.index)
+        )
         filtered_df = df[
             (df["position_group_raw"].isin(selected_positions)) &
             (df["age_at_valuation"].between(selected_age[0], selected_age[1])) &
             (df["target_market_value"] <= selected_val) &
-            (df["minutes_last_season"] >= selected_mins)
+            (df["minutes_last_season"] >= selected_mins) &
+            (df["league_tier"].isin(selected_tiers) if "league_tier" in df.columns else True) &
+            contract_mask
         ].copy()
 
         filtered_df = filtered_df.sort_values(by="undervalued_pct", ascending=False)
@@ -1165,7 +1765,7 @@ with tab_scouting:
                     },
                 )
                 fig1.update_yaxes(tickformat=".0%")
-                st.plotly_chart(fig1, use_container_width=True)
+                st.plotly_chart(fig1, width="stretch")
 
             with c2:
                 fig2 = px.scatter(
@@ -1181,7 +1781,7 @@ with tab_scouting:
                 )
                 max_l = max(filtered_df["target_market_value"].max(), filtered_df["predicted_value"].max())
                 fig2.add_shape(type="line", line=dict(dash="dash", color=REFERENCE_LINE_COLOR), x0=0, y0=0, x1=max_l, y1=max_l)
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width="stretch")
                 st.caption("Points above the dashed line indicate players estimated to be worth more than their current market value.")
 
             st.divider()
@@ -1191,18 +1791,106 @@ with tab_scouting:
 
             st.dataframe(
                 display_df,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 column_config=overview_column_config(),
             )
             download_df = add_download_context_columns(overview_df)
-            st.download_button(
-                label="💾 Download Filtered Shortlist",
-                data=download_df.to_csv(index=False),
-                file_name="filtered_undervalued_shortlist.csv",
-                mime="text/csv",
+            # Phase 12: active filter summary for metadata sheet
+            _active_filters = {
+                "Positions": ", ".join(selected_positions) if selected_positions else "All",
+                "Age": f"{selected_age[0]}-{selected_age[1]}",
+                "Max Market Value": f"EUR {selected_val:,}",
+                "Min Minutes": str(selected_mins),
+                "League Tier": selected_tier_label,
+                "Contract Status": selected_contract_label,
+            }
+            if _OPENPYXL_AVAILABLE:
+                _excel_bytes = build_shortlist_excel(overview_df, active_filters=_active_filters)
+                st.download_button(
+                    label="💾 Download Filtered Shortlist (Excel)",
+                    data=_excel_bytes,
+                    file_name="filtered_undervalued_shortlist.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            else:
+                st.warning("openpyxl is not installed  -  Excel export unavailable. Install it with `pip install openpyxl`.")
+                st.download_button(
+                    label="💾 Download Filtered Shortlist (CSV fallback)",
+                    data=download_df.to_csv(index=False),
+                    file_name="filtered_undervalued_shortlist.csv",
+                    mime="text/csv",
+                )
+
+            # ── Phase 12: Session Watchlist ──────────────────────────────────
+            if "watchlist" not in st.session_state:
+                st.session_state["watchlist"] = []
+
+            st.divider()
+            st.markdown("#### ➕ Add to Watchlist")
+            _shortlist_names = overview_df["name"].dropna().tolist() if "name" in overview_df.columns else []
+            _selected_for_watchlist = st.multiselect(
+                "Select players to add to watchlist",
+                options=_shortlist_names,
+                default=[],
+                key="watchlist_multiselect",
+                help="Players are saved for the current session only.",
             )
-            disclaimer_box("Statistical leads should be validated by professional human scouting.")
+            if st.button("Add Selected to Watchlist", key="btn_add_watchlist"):
+                _added = 0
+                for _pname in _selected_for_watchlist:
+                    if _pname not in st.session_state["watchlist"]:
+                        st.session_state["watchlist"].append(_pname)
+                        _added += 1
+                if _added:
+                    st.success(f"Added {_added} player(s) to watchlist.")
+                else:
+                    st.info("Selected players are already in the watchlist.")
+
+            with st.expander(f"📌 My Watchlist ({len(st.session_state['watchlist'])} players)", expanded=False):
+                if not st.session_state["watchlist"]:
+                    st.info("Your watchlist is empty. Use the multiselect above to add players.")
+                else:
+                    _wl_names = st.session_state["watchlist"]
+                    _wl_df = df[df["name"].isin(_wl_names)].copy() if "name" in df.columns else pd.DataFrame()
+                    if not _wl_df.empty:
+                        _wl_display = add_overview_context_columns(_wl_df, club_context_df)
+                        _wl_table = build_overview_display_table(_wl_display)
+                        st.dataframe(_wl_table, width="stretch", hide_index=True, column_config=overview_column_config())
+                    else:
+                        st.write("Watchlisted players: " + ", ".join(_wl_names))
+
+                    _col_clear, _col_export = st.columns(2)
+                    with _col_clear:
+                        if st.button("🗑️ Clear Watchlist", key="btn_clear_watchlist"):
+                            st.session_state["watchlist"] = []
+                            st.rerun()
+                    with _col_export:
+                        if not _wl_df.empty:
+                            if _OPENPYXL_AVAILABLE:
+                                _wl_excel = build_shortlist_excel(_wl_display, active_filters={"Source": "Watchlist"})
+                                st.download_button(
+                                    label="💾 Export Watchlist (Excel)",
+                                    data=_wl_excel,
+                                    file_name="watchlist_export.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    key="btn_export_watchlist",
+                                )
+                            else:
+                                st.download_button(
+                                    label="💾 Export Watchlist (CSV)",
+                                    data=add_download_context_columns(_wl_display).to_csv(index=False),
+                                    file_name="watchlist_export.csv",
+                                    mime="text/csv",
+                                    key="btn_export_watchlist_csv",
+                                )
+            disclaimer_box(
+                "Statistical leads should be validated by professional human scouting. "
+                "The 'Key Stat' column shows the most relevant available metric per position "
+                "(goals+assists for attackers, minutes and discipline for defenders, minutes for goalkeepers). "
+                "Advanced metrics such as xG, progressive passes, tackles, and save percentage are only available for a small subset "
+                "of Top 5 League players  -  use the Player Alternatives tab for detailed profile comparisons."
+            )
         else:
             st.warning("Adjust filters to see candidates.")
 
@@ -1296,10 +1984,20 @@ with tab_similarity:
         else:
             data_context = "No advanced data match. Using standard stats."
 
+        # Phase 8: build league tier badge for target player
+        target_comp_id = target_data.get("current_club_domestic_competition_id", None)
+        target_tier_badge = league_tier_badge(target_comp_id)
+        target_tier_note = get_scout_note(target_comp_id)
+
+        # Phase 9: build contract badge for target player
+        target_contract_status = target_data.get("contract_status", "Unknown")
+        target_contract_badge_html = contract_status_badge(target_contract_status)
+        target_contract_note = get_contract_scout_note(target_contract_status)
+
         st.markdown(
             f"""
             <div class="target-panel">
-                <div class="target-name">{html.escape(str(target_player_name))}</div>
+                <div class="target-name">{html.escape(str(target_player_name))} {target_tier_badge} {target_contract_badge_html}</div>
                 <div class="target-summary">
                     {html.escape(str(target_data['position_group_raw']))} · Playing Role: {html.escape(str(target_role))} · {html.escape(target_foot)}
                 </div>
@@ -1307,12 +2005,18 @@ with tab_similarity:
             """,
             unsafe_allow_html=True,
         )
+        if target_tier_note:
+            st.caption(f"🌍 **League Context:** {target_tier_note}")
+        if target_contract_note:
+            st.caption(f"📋 **Contract:** {target_contract_note}")
 
-        p1, p2, p3, p4 = st.columns(4)
-        with p1: kpi_card("Position", target_data['position_group_raw'])
-        with p2: kpi_card("Age", f"{target_data['age_at_valuation']:.1f}")
-        with p3: kpi_card("Current Value", f"€{target_data['target_market_value']:,.0f}")
-        with p4: kpi_card("Minutes Played", f"{target_data['minutes_last_season']:.0f}")
+        # Compact info line replaces the 4 Position/Age/Value/Minutes cards
+        render_info_line([
+            ("Position", target_data.get("position_group_raw", "N/A")),
+            ("Age", f"{target_data['age_at_valuation']:.1f}"),
+            ("Current Value", format_currency(target_data.get('target_market_value', 0))),
+            ("Minutes Played", f"{_safe_float(target_data.get('minutes_last_season', 0)):,.0f}"),
+        ])
 
         st.markdown("##### Role Profile")
         st.markdown(render_chip_row(role_chips), unsafe_allow_html=True)
@@ -1330,12 +2034,71 @@ with tab_similarity:
                         {"Field": "Stats Season", "Value": stats_season_label},
                     ]
                 )
-                st.dataframe(details_df, use_container_width=True, hide_index=True)
+                st.dataframe(details_df, width="stretch", hide_index=True)
                 st.caption("Match confidence refers to the player metadata matching process between datasets. It is not the similarity score.")
                 fuzzy_note = fuzzy_confidence_note(match_method, match_score)
                 if fuzzy_note:
                     st.caption(fuzzy_note)
 
+
+        st.divider()
+
+        # ── Target Player Statistics (for comparison with alternatives) ─────
+        # Show the target player's core stats + profile metrics in the same
+        # format as the alternatives table so scouts can compare directly.
+        target_position = target_data["position_group_raw"]
+        target_stats_rows = []
+
+        # Core stats (always available)
+        target_stats_rows.extend([
+            ("Goals/90", f"{_safe_float(target_data.get('goals_per_90_ls', 0)):.2f}"),
+            ("Assists/90", f"{_safe_float(target_data.get('assists_per_90_ls', 0)):.2f}"),
+            ("Cards/90", f"{_safe_float(target_data.get('cards_per_90_ls', 0)):.2f}"),
+        ])
+
+        # Profile metrics (enriched mode)  -  position-specific
+        if actual_mode == "enriched":
+            profile_map = {
+                "Forward": [
+                    ("Goal Threat", "profile_goal_threat"),
+                    ("Chance Creation", "profile_chance_creation"),
+                    ("1v1 Threat", "profile_1v1_threat"),
+                    ("Box Involvement", "profile_box_involvement"),
+                    ("Ball Progression", "profile_ball_progression"),
+                ],
+                "Midfielder": [
+                    ("Ball Progression", "profile_ball_progression"),
+                    ("Chance Creation", "profile_chance_creation"),
+                    ("Possession Quality", "profile_possession_quality"),
+                    ("Defensive Activity", "profile_defensive_activity"),
+                    ("Carrying", "profile_carrying"),
+                ],
+                "Defender": [
+                    ("Defending Volume", "profile_defending_volume"),
+                    ("Duel Strength", "profile_duel_strength"),
+                    ("Aerial Strength", "profile_aerial_strength"),
+                    ("Build-up Support", "profile_build_up_support"),
+                    ("Risk Control", "profile_risk_control"),
+                ],
+                "Goalkeeper": [
+                    ("Distribution", "profile_distribution"),
+                    ("Recoveries", "profile_recoveries"),
+                    ("Aerial Control", "profile_aerial_control"),
+                ],
+            }
+            for label, col in profile_map.get(target_position, []):
+                val = target_data.get(col, None)
+                if val is None or pd.isna(val):
+                    target_stats_rows.append((label, "N/A"))
+                else:
+                    target_stats_rows.append((label, f"{float(val) * 100:.0f}/100"))
+
+        st.markdown(f"##### 📊 Target Player Statistics · {target_player_name}")
+        st.caption("Use these numbers as a reference when comparing the alternatives table below.")
+
+        # Render as a horizontal table (single row)
+        target_stats_df = pd.DataFrame([{label: value for label, value in target_stats_rows}])
+        st.dataframe(target_stats_df, width="stretch", hide_index=True)
 
         st.divider()
 
@@ -1438,7 +2201,7 @@ with tab_similarity:
 
                 st.dataframe(
                     final_display,
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     column_config=similarity_column_config(),
                 )
@@ -1460,12 +2223,22 @@ with tab_similarity:
                         st.markdown("- **Basic attacking mode** uses core contribution metrics: Goals/90, Assists/90, and Cards/90.")
 
                 # Download
-                st.download_button(
-                    label=f"💾 Download Alternatives for {target_player_name}",
-                    data=add_download_context_columns(filtered_df).to_csv(index=False),
-                    file_name=f"alternatives_{safe_filename_label(target_player_name)}.csv",
-                    mime="text/csv"
-                )
+                if _OPENPYXL_AVAILABLE:
+                    _sim_excel = build_similarity_excel(filtered_df, target_name=target_player_name)
+                    st.download_button(
+                        label=f"💾 Download Comparison for {target_player_name} (Excel)",
+                        data=_sim_excel,
+                        file_name=f"alternatives_{safe_filename_label(target_player_name)}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                else:
+                    st.warning("openpyxl is not installed  -  Excel export unavailable. Install it with `pip install openpyxl`.")
+                    st.download_button(
+                        label=f"💾 Download Alternatives for {target_player_name} (CSV fallback)",
+                        data=add_download_context_columns(filtered_df).to_csv(index=False),
+                        file_name=f"alternatives_{safe_filename_label(target_player_name)}.csv",
+                        mime="text/csv",
+                    )
         else:
             st.info("No similar players found for the selected role mode. Try Compatible Roles or Broad Position Group.")
 
@@ -1526,6 +2299,42 @@ with tab_rationale:
         )
         selected_row = pool_df[pool_df[name_col] == selected_player_name].iloc[0]
 
+        # ── Compute confidence and action once (used in hero + action card) ──
+        confidence = compute_confidence_level(selected_row)
+        confidence_color = {"High": "🟢", "Medium": "🟡", "Low": "🔴"}.get(confidence, "⚪")
+
+        gap_val = _safe_float(selected_row.get("undervalued_pct", 0))
+        contract_st = selected_row.get("contract_status", "Unknown")
+        age_val = _safe_float(selected_row.get("age_at_valuation", 30), default=30.0)
+        if gap_val >= 1.0 and contract_st in ("Expiring", "Expired"):
+            action = "🔥 Prioritize  -  Expiring Contract"
+        elif gap_val >= 1.0 and age_val <= 23:
+            action = "⭐ Prioritize  -  Young & Undervalued"
+        elif gap_val >= 1.0:
+            action = "✅ Prioritize Review"
+        elif gap_val >= 0.5:
+            action = "👀 Monitor"
+        else:
+            action = "📋 Needs Review"
+
+        # ── Hero: name + tier + contract badges + confidence ─────────────────
+        hero_comp_id = selected_row.get("current_club_domestic_competition_id", None)
+        hero_contract = selected_row.get("contract_status", "Unknown")
+        badges_html = (
+            league_tier_badge(hero_comp_id)
+            + " "
+            + contract_status_badge(hero_contract)
+            + f' <span class="hero-meta" style="margin-left:6px;">{confidence_color} Confidence: {html.escape(confidence)}</span>'
+        )
+        hero_meta = [
+            str(selected_row.get("position_group_raw", "N/A")),
+            f"{age_val:.1f} yrs",
+            f"{_safe_float(selected_row.get('minutes_last_season', 0)):,.0f} min",
+            current_club_display_label(selected_row),
+        ]
+        render_player_hero(selected_player_name, badges_html=badges_html, meta_items=hero_meta)
+
+        # ── Primary KPIs: 4 cards that matter most for scouting ──────────────
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             kpi_card("Current Value", format_currency(selected_row.get("target_market_value")))
@@ -1534,21 +2343,23 @@ with tab_rationale:
         with c3:
             kpi_card("Value Gap", format_percentage(selected_row.get("undervalued_pct", 0)))
         with c4:
-            action = "Prioritize Review" if selected_row.get("undervalued_pct", 0) >= 1 else "Monitor"
             kpi_card("Suggested Action", action)
 
-        p1, p2, p3, p4 = st.columns(4)
-        with p1:
-            kpi_card("Position", selected_row.get("position_group_raw", "N/A"))
-        with p2:
-            kpi_card("Age", f"{float(selected_row.get('age_at_valuation', 0)):.1f}")
-        with p3:
-            kpi_card("Minutes", f"{float(selected_row.get('minutes_last_season', 0)):,.0f}")
-        with p4:
-            kpi_card("Club", current_club_display_label(selected_row))
+        # ── Form strip: single row replaces 4 form KPI cards ─────────────────
+        form_val = selected_row.get("form_trend", "Insufficient Data")
+        render_form_strip(
+            form_val=str(form_val),
+            goals_delta=selected_row.get("form_trend_goals", None),
+            assists_delta=selected_row.get("form_trend_assists", None),
+            mins_ratio=selected_row.get("form_trend_minutes", None),
+        )
 
         evidence_df = build_scouting_signals(selected_row)
-        st.markdown(build_rationale_summary(selected_player_name, evidence_df))
+
+        # Phase 10: personalized rationale with confidence level
+        rationale_text = build_rationale_summary(selected_player_name, evidence_df, row=selected_row)
+        st.markdown(rationale_text)
+        st.caption(f"{confidence_color} **Data Confidence: {confidence}**  -  based on league tier, minutes played, contract availability, and advanced stats coverage.")
 
         scout_col_1, scout_col_2 = st.columns(2)
         with scout_col_1:
@@ -1563,12 +2374,59 @@ with tab_rationale:
             st.markdown("##### ⚠️ Scout Checks Before Action")
             for check in build_scout_checks(selected_row):
                 st.warning(check)
+            # Phase 8: add league tier contextual note
+            tier_note = get_scout_note(selected_row.get("current_club_domestic_competition_id", None))
+            if tier_note:
+                tier_short = get_tier_short(selected_row.get("current_club_domestic_competition_id", None))
+                st.info(f"🌍 **League Tier ({tier_short}):** {tier_note}")
+            # Phase 9: add contract contextual note
+            contract_status = selected_row.get("contract_status", "Unknown")
+            contract_note = get_contract_scout_note(contract_status)
+            if contract_note:
+                contract_badge_text = get_contract_badge(contract_status)
+                st.info(f"📋 **Contract ({contract_badge_text}):** {contract_note}")
 
         st.markdown("##### 📊 Evidence Table")
         if evidence_df.empty:
             st.info("No evidence table is available for this player.")
         else:
-            st.dataframe(evidence_df, use_container_width=True, hide_index=True)
+            st.dataframe(evidence_df, width="stretch", hide_index=True)
+
+        # ── Phase 12: PDF Scouting Brief ─────────────────────────────────────
+        st.divider()
+        st.markdown("##### 📄 Export Scouting Brief")
+        if not _FPDF_AVAILABLE:
+            st.warning("fpdf2 is not installed  -  PDF export unavailable. Install it with `pip install fpdf2`.")
+        else:
+            if st.button("📄 Generate Scouting Brief", key="btn_generate_pdf"):
+                _scout_checks_list = build_scout_checks(selected_row)
+                # Add league tier and contract notes to checks if present
+                _tier_note = get_scout_note(selected_row.get("current_club_domestic_competition_id", None))
+                if _tier_note:
+                    _tier_short_label = get_tier_short(selected_row.get("current_club_domestic_competition_id", None))
+                    _scout_checks_list = [f"League Tier ({_tier_short_label}): {_tier_note}"] + _scout_checks_list
+                _contract_note = get_contract_scout_note(selected_row.get("contract_status", "Unknown"))
+                if _contract_note:
+                    _contract_badge_label = get_contract_badge(selected_row.get("contract_status", "Unknown"))
+                    _scout_checks_list = _scout_checks_list + [f"Contract ({_contract_badge_label}): {_contract_note}"]
+
+                _pdf_bytes = build_scouting_pdf(
+                    player_name=selected_player_name,
+                    row=selected_row,
+                    rationale_text=rationale_text,
+                    signals_df=evidence_df,
+                    scout_checks=_scout_checks_list,
+                )
+                if _pdf_bytes:
+                    st.download_button(
+                        label=f"⬇️ Download PDF  -  {selected_player_name}",
+                        data=_pdf_bytes,
+                        file_name=f"scouting_brief_{safe_filename_label(selected_player_name)}.pdf",
+                        mime="application/pdf",
+                        key="btn_download_pdf",
+                    )
+                else:
+                    st.error("PDF generation failed. Check that fpdf2 is correctly installed.")
 
 
 # =========================
@@ -1641,7 +2499,7 @@ with tab_backtest:
                     color_discrete_sequence=["#0f766e"],
                 )
                 fig_gap.update_layout(height=390, title_x=0.02, xaxis_tickangle=-20)
-                st.plotly_chart(fig_gap, use_container_width=True)
+                st.plotly_chart(fig_gap, width="stretch")
         with chart_col_2:
             position_chart = by_position_df[by_position_df["population"] == "Scouting Leads"].copy()
             if not position_chart.empty and "median_growth_12m_pct" in position_chart.columns:
@@ -1656,7 +2514,7 @@ with tab_backtest:
                     color_discrete_sequence=["#2563eb"],
                 )
                 fig_position.update_layout(height=390, title_x=0.02)
-                st.plotly_chart(fig_position, use_container_width=True)
+                st.plotly_chart(fig_position, width="stretch")
 
         growth_df = candidates_df.copy()
         if "growth_12m_pct" in growth_df.columns:
@@ -1674,7 +2532,7 @@ with tab_backtest:
                 )
                 fig_growth.add_vline(x=25, line_dash="dash", line_color=REFERENCE_LINE_COLOR)
                 fig_growth.update_layout(height=360, title_x=0.02, yaxis_title="Historical Leads")
-                st.plotly_chart(fig_growth, use_container_width=True)
+                st.plotly_chart(fig_growth, width="stretch")
 
         st.markdown("#### Historical Scouting Leads")
         table_source = candidates_df.copy()
@@ -1691,7 +2549,7 @@ with tab_backtest:
         display_backtest = build_backtest_display_table(table_source.head(300))
         st.dataframe(
             display_backtest,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config=backtest_column_config(),
         )

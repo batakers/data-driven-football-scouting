@@ -8,3 +8,5 @@ plotly
 matplotlib
 thefuzz
 python-Levenshtein
+openpyxl
+fpdf2

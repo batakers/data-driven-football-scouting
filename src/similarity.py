@@ -273,7 +273,11 @@ def add_advanced_profile_metrics(df):
                 total_weight += weight
 
             if weighted_scores and total_weight:
-                output[metric_col] = (sum(weighted_scores) / total_weight).clip(0, 1).round(4)
+                combined = (sum(weighted_scores) / total_weight).clip(0, 1).round(4)
+                # Only update rows inside position_mask so shared metric names
+                # (e.g. profile_chance_creation for both Forward and Midfielder)
+                # do not overwrite each other across position groups.
+                output.loc[position_mask, metric_col] = combined.loc[position_mask]
 
     return output
 

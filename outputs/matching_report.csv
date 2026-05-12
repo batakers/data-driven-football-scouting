@@ -1,17 +1,17 @@
 section,segment,numerator,denominator,rate,description
-overall,all_players,1792,20305,0.0882541245998522,Accepted enriched matches across the full Transfermarkt pool
-eligible_top5,top5_transfermarkt_players,1791,4232,0.4232041587901701,Accepted enriched matches among Transfermarkt rows mapped to Top 5 leagues
+overall,all_players,1791,20304,0.088209219858156,Accepted enriched matches across the full Transfermarkt pool
+eligible_top5,top5_transfermarkt_players,1790,4231,0.4230678326636728,Accepted enriched matches among Transfermarkt rows mapped to Top 5 leagues
 league,ENG-Premier League,377,914,0.412472647702407,Accepted enriched matches by Transfermarkt league denominator
-league,ESP-La Liga,387,887,0.4363021420518602,Accepted enriched matches by Transfermarkt league denominator
+league,ESP-La Liga,386,886,0.435665914221219,Accepted enriched matches by Transfermarkt league denominator
 league,FRA-Ligue 1,291,734,0.3964577656675749,Accepted enriched matches by Transfermarkt league denominator
 league,GER-Bundesliga,331,764,0.4332460732984293,Accepted enriched matches by Transfermarkt league denominator
 league,ITA-Serie A,405,933,0.4340836012861736,Accepted enriched matches by Transfermarkt league denominator
-method,exact_name_team_season,1553,1792,0.8666294642857143,Share of accepted enriched matches by match method
-method,fuzzy_high_confidence,239,1792,0.1333705357142857,Share of accepted enriched matches by match method
-status,matched,1792,20305,0.0882541245998522,Audit row distribution by final match status
-status,review_required,149,20305,0.0073380940655011,Audit row distribution by final match status
-status,unmatched,18364,20305,0.9044077813346466,Audit row distribution by final match status
-quality_gate,future_leakage_accepted,0,1792,0.0,Release gate violation count among accepted enriched matches
-quality_gate,position_mismatch_accepted,0,1792,0.0,Release gate violation count among accepted enriched matches
-quality_gate,duplicate_conflicting_kaggle_assignment,0,1792,0.0,Release gate violation count among accepted enriched matches
-similarity_engine,enriched_in_similarity_engine,1212,4852,0.24979389942291838,Accepted enriched players available after final similarity engine eligibility filters
+method,exact_name_team_season,1552,1791,0.8665549972082636,Share of accepted enriched matches by match method
+method,fuzzy_high_confidence,239,1791,0.1334450027917364,Share of accepted enriched matches by match method
+status,matched,1791,20304,0.088209219858156,Audit row distribution by final match status
+status,review_required,149,20304,0.0073384554767533,Audit row distribution by final match status
+status,unmatched,18364,20304,0.9044523246650906,Audit row distribution by final match status
+quality_gate,future_leakage_accepted,0,1791,0.0,Release gate violation count among accepted enriched matches
+quality_gate,position_mismatch_accepted,0,1791,0.0,Release gate violation count among accepted enriched matches
+quality_gate,duplicate_conflicting_kaggle_assignment,0,1791,0.0,Release gate violation count among accepted enriched matches
+similarity_engine,enriched_in_similarity_engine,1211,4851,0.24963924963924963,Accepted enriched players available after final similarity engine eligibility filters

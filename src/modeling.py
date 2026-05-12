@@ -132,7 +132,14 @@ def main():
     df['undervalued_pct'] = (df['predicted_value'] - df['target_market_value']) / df['target_market_value']
     
     preds_df = df[['player_id', 'name', 'position_group_raw', 'age_at_valuation', 'current_club_id',
-                   'minutes_last_season', 'target_market_value', 'predicted_value', 'undervalued_pct']]
+                   'minutes_last_season', 'goals_per_90_ls', 'assists_per_90_ls', 'cards_per_90_ls',
+                   'target_market_value', 'predicted_value', 'undervalued_pct',
+                   'current_club_domestic_competition_id', 'current_club_name',
+                   'league_tier', 'league_tier_label', 'league_tier_short',
+                   'contract_expiry_date', 'contract_months_remaining',
+                   'contract_status', 'contract_status_label', 'contract_badge',
+                   'form_trend', 'form_trend_goals', 'form_trend_assists', 'form_trend_minutes',
+                   'form_mins_a', 'form_mins_b']]
     preds_df.to_csv("outputs/predictions_per_player.csv", index=False)
     
     print("\nModeling complete! Evaluation saved to outputs/model_evaluation.csv")

@@ -1,15 +1,15 @@
 {
     "status": "PASS",
     "errors": [],
-    "matched_count": 1792,
-    "audit_count": 20305,
-    "overall_match_rate": 0.08825412459985225,
-    "eligible_top5_count": 4232,
-    "eligible_top5_matched_count": 1791,
-    "eligible_top5_match_rate": 0.42320415879017015,
+    "matched_count": 1791,
+    "audit_count": 20304,
+    "overall_match_rate": 0.08820921985815602,
+    "eligible_top5_count": 4231,
+    "eligible_top5_matched_count": 1790,
+    "eligible_top5_match_rate": 0.42306783266367287,
     "future_leakage_accepted": 0,
     "position_mismatch_accepted": 0,
     "duplicate_conflicting_kaggle_assignment_rows": 0,
     "fuzzy_review_accepted": 0,
-    "enriched_available_rows": 1792
+    "enriched_available_rows": 1791
 }

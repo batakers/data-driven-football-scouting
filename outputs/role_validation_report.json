@@ -1,9 +1,9 @@
 {
     "status": "PASS",
     "errors": [],
-    "role_enriched_count": 20305,
+    "role_enriched_count": 20304,
     "role_metadata_available_count": 19448,
-    "role_metadata_coverage": 0.9577936468850037,
+    "role_metadata_coverage": 0.9578408195429472,
     "exact_role_checks": 240,
     "compatible_role_checks": 260
 }

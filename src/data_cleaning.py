@@ -1,5 +1,12 @@
 import pandas as pd
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.excluded_players import EXCLUDED_PLAYERS
 
 def main():
     print("Starting Data Cleaning...")
@@ -17,6 +24,14 @@ def main():
     
     # Filter out inactive players (e.g. valuation date is very old, or last_season is old)
     df = df[df['last_season'] >= 2023].copy()
+
+    # Exclude retired/inactive players from the active pipeline
+    if EXCLUDED_PLAYERS:
+        before = len(df)
+        df = df[~df['name'].isin(EXCLUDED_PLAYERS)].copy()
+        excluded_count = before - len(df)
+        if excluded_count > 0:
+            print(f"  Excluded {excluded_count} player(s): {', '.join(EXCLUDED_PLAYERS[:5])}")
     
     # Handle missing values
     # Impute height by position median

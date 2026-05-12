@@ -13,12 +13,18 @@ The final system combines:
 - Role-aware similarity search with tactical compatibility and foot/side fit.
 - Scout-facing rationale that explains candidate flags in plain language.
 - Temporal validation that checks historical scouting leads against future market-value movement.
+- League-strength tiering for contextual performance assessment.
+- Contract awareness with transfer feasibility signals.
+- Form trend analysis comparing recent vs earlier performance windows.
+- Personalized scouting rationale with data confidence scoring.
+- Excel and PDF export for scout workflow completion.
+- Session watchlist for tracking candidates within a scouting session.
 
 ## Project Status
 
 This project is complete as a portfolio-ready football analytics data product.
 
-The core scope ends at Phase 7, where the scouting workflow is validated against historical future market-value movement. Future ideas such as walk-forward retraining, deployment, recruitment brief export, and contract or injury enrichment are treated as optional extensions rather than core requirements.
+The core analytical scope ends at Phase 7 (temporal validation). Phases 8-12 extend the system into a more complete scouting workflow tool with league context, contract intelligence, form signals, personalized rationale, and export capabilities.
 
 ## 🧠 Project Story: From Market Value Prediction to Role-Aware Scouting
 
@@ -47,6 +53,11 @@ The final system does not only predict value. It supports a scouting workflow:
 | **Phase 5** | Role-Aware Similarity | Add tactical role compatibility, role tags, and foot/side fit. |
 | **Phase 6** | Scouting Rationale | Translate model outputs into scout-friendly evidence, risks, and next steps. |
 | **Phase 7** | Temporal Validation | Test whether historical scouting leads gained market value after 6-12 months. |
+| **Phase 8** | League-Strength Context | Add competitive tier classification so scouts can assess performance context. |
+| **Phase 9** | Contract Awareness | Add contract expiry data to surface transfer feasibility and urgency. |
+| **Phase 10** | Personalized Rationale | Replace generic templates with player-specific scouting narratives. |
+| **Phase 11** | Form Trend Analysis | Compare recent vs earlier 6-month windows to detect rising or declining form. |
+| **Phase 12** | Export and Workflow | Add Excel export, PDF scouting briefs, and session watchlist for workflow completion. |
 
 ### Phase 1 - From Raw Transfermarkt Data to Market Value Prediction
 
@@ -125,9 +136,45 @@ The temporal validation phase builds historical valuation snapshots, flags scout
 
 This is a fixed-model retrospective signal audit, not walk-forward retraining. It does not prove causality, but it helps evaluate whether the scouting signal is useful as a prioritization tool.
 
+### Phase 8 - From Raw League Names to Competitive Context
+
+After the temporal validation confirmed the scouting signal had value, the next question was context:
+
+> Is a player's performance from an elite league or a developing one?
+
+Phase 8 introduced a four-tier league classification system (Elite, Strong, Competitive, Developing) covering 32 domestic leagues. Each player now carries a league tier badge and contextual scout notes. This allows scouts to immediately assess whether performance data comes from a high-competition environment or requires additional step-up validation.
+
+### Phase 9 - From Unknown Contracts to Transfer Feasibility
+
+Scouting leads are only actionable if the player can actually be acquired. Phase 9 added contract awareness by combining two data sources (`players.csv` and `player_bio.csv`) to resolve contract expiry dates for 87.9% of the pipeline.
+
+Players are classified as Expiring (<12 months), Short (12-24 months), Medium (24-36 months), or Long (>36 months). Expiring contracts signal potential free transfers or reduced fees. Long contracts signal significant fee requirements. This context helps scouts prioritize leads by transfer feasibility.
+
+### Phase 10 - From Generic Templates to Personalized Rationale
+
+The original rationale layer produced identical text for every player. Phase 10 rewrote the entire rationale system to generate unique, data-specific narratives.
+
+Each player now receives a personalized scouting summary that references their specific age, minutes, value gap in euros, league tier, contract situation, and position-specific performance highlights. Scout checks are contextual rather than generic: a young player from a Tier 4 league gets different warnings than a senior player from the Premier League.
+
+A data confidence score (High, Medium, Low) was added based on league tier, minutes played, contract availability, and advanced stats coverage.
+
+### Phase 11 - From Static Snapshots to Form Trend Signals
+
+A single 365-day window treats all performance equally, but scouts care about trajectory. Phase 11 splits the performance window into two halves (0-180 days and 181-365 days) and computes per-90 deltas.
+
+Players are classified as Rising, Stable, or Declining based on goals/90 improvement and minutes ratio. This helps scouts distinguish between a player who peaked 10 months ago and one who is currently improving. Form trends require at least 450 minutes in each window to avoid noise from small samples.
+
+### Phase 12 - From Dashboard to Complete Workflow
+
+A scouting tool is only useful if it fits into the scout's existing workflow. Phase 12 added three capabilities:
+
+- **Excel export** with multi-sheet output (data + metadata) for shortlists, similarity comparisons, and watchlists.
+- **PDF scouting briefs** per player containing key stats, personalized rationale, scouting signals, and scout checks in a clean printable format.
+- **Session watchlist** allowing scouts to bookmark candidates during a session and export them as a batch.
+
 ## ✅ What the Final System Does
 
-The current system supports four connected scouting workflows.
+The current system supports four connected scouting workflows, enhanced with league context, contract intelligence, form signals, and export capabilities.
 
 ### Find Undervalued Players
 
@@ -137,8 +184,11 @@ It helps answer:
 
 - Which young players appear underpriced relative to recent statistical output?
 - How does predicted value compare with current market value?
-- Which candidates fit age, position, value, and minutes filters?
+- Which candidates fit age, position, value, minutes, league tier, and contract filters?
 - Which players should be reviewed first by a scout or analyst?
+- What is the player's recent form trend (rising, stable, or declining)?
+
+Each candidate row shows a contextual "Key Stat" tailored to their position, plus league tier badge, contract status, and form indicator. Scouts can add players to a session watchlist and export filtered shortlists as Excel files.
 
 ### Player Alternatives
 
@@ -146,26 +196,31 @@ The alternatives tab compares a selected target player with potential replacemen
 
 It supports:
 
+- **Target player statistics:** position-specific profile metrics displayed before the comparison table.
 - **Ranked playing-profile matches:** candidates are sorted by overall fit before recruitment filters are applied.
 - **Recruitment filters:** users can filter by max age, max current value, minimum overall fit, minimum role fit, younger-than-target, cheaper-than-target, and undervalued-only flags.
 - **Price Status:** candidates are labelled as lower cost, similar cost, or higher cost relative to the target player.
+- **League Tier and Contract:** each alternative shows league tier badge and contract status for transfer context.
 - **Enriched Mode:** advanced-stat similarity for accepted Top 5 League matches.
 - **Basic Mode:** global fallback using core performance features.
 - **Exact Role:** candidates with the same explicit role tag.
 - **Compatible Roles:** candidates above the tactical role-compatibility threshold.
 - **Broad Position Group:** fallback logic for broad position matching.
+- **Excel export:** download comparison results with metadata sheet.
 
 ### Scouting Rationale
 
-The rationale tab explains candidate flags in non-technical scouting language.
+The rationale tab explains candidate flags in non-technical scouting language with personalized, player-specific narratives.
 
 It supports:
 
-- **Player Rationale:** explains why a selected player is worth review.
-- **Key Scouting Signals:** highlights positive data signals such as minutes, age profile, and value gap.
-- **Scout Checks Before Action:** lists the manual checks needed before recruitment action.
+- **Personalized Rationale:** unique narrative per player referencing their specific data points (age, minutes, value gap, league tier, contract, form trend).
+- **Data Confidence:** High/Medium/Low scoring based on data completeness.
+- **Key Scouting Signals:** highlights positive data signals including league context, contract situation, and form trend.
+- **Scout Checks Before Action:** contextual checks specific to the player's situation (not generic templates).
 - **Evidence Table:** shows the concrete player evidence behind the rationale.
-- **Suggested Action:** labels whether the player should be prioritized or monitored.
+- **Suggested Action:** context-aware labels such as "Prioritize - Expiring Contract" or "Prioritize - Young and Undervalued".
+- **PDF Scouting Brief:** downloadable one-page PDF report per player for sharing with sporting directors.
 
 ### Backtest Results
 
@@ -369,14 +424,14 @@ The temporal validation status is marked as WARN because the audit found extreme
 
 ## 🔮 Future Work
 
-The core portfolio project is considered complete at Phase 7. Future improvements are intentionally treated as optional extensions rather than requirements for the main project scope.
+The core portfolio project is considered complete at Phase 12. The remaining extension is deployment.
 
 Potential future extensions include:
 
+- **Deployment:** publish the dashboard as a hosted scouting demo (Streamlit Cloud or HuggingFace Spaces).
 - **Walk-forward retraining:** retrain the model at each historical snapshot for stricter temporal validation.
-- **Deployment:** publish the dashboard as a hosted scouting demo.
-- **Recruitment brief or PDF export:** allow users to export selected candidates into scout-facing reports.
-- **Contract, injury, or league-strength enrichment:** add more real-world context that affects recruitment decisions and market value.
+- **Injury enrichment:** add injury history data to improve transfer risk assessment.
+- **Advanced stats expansion:** integrate additional data sources beyond Top 5 Leagues to improve profile metric coverage.
 
 ## 🚀 Reproducibility
 
@@ -420,6 +475,7 @@ You can also run the core scripts manually:
 
 ```bash
 python src/data_engineering.py
+python src/enrich_contract.py
 python src/data_cleaning.py
 python src/feature_engineering.py
 python src/modeling.py
@@ -433,6 +489,8 @@ python src/audit_data_quality.py
 python src/temporal_backtest.py
 python src/validate_temporal_backtest.py
 ```
+
+Note: `data_engineering.py` now includes league tier enrichment (Phase 8) and form trend computation (Phase 11). `enrich_contract.py` (Phase 9) should be run after `data_engineering.py` and before `data_cleaning.py`.
 
 Important: avoid chaining PowerShell commands with `;` for final pipeline runs, because later commands will continue even if validation fails. Use the guarded script or explicit exit-code checks.
 
@@ -462,6 +520,7 @@ streamlit run app/dashboard.py
 | `outputs/temporal_validation/temporal_backtest_candidates.csv` | Historical scouting leads with 6-month and 12-month future value outcomes. |
 | `outputs/temporal_validation/temporal_backtest_summary.csv` | Overall and snapshot-level hit rates, growth rates, and baseline comparison. |
 | `outputs/temporal_validation/temporal_validation_report.json` | PASS/FAIL temporal validation report for snapshot leakage, outcome windows, and metric consistency. |
+| `outputs/contract_enrichment_report.csv` | Contract status coverage and distribution report. |
 
 ## 🧩 Project Structure
 
@@ -470,16 +529,19 @@ app/
   dashboard.py                 # Streamlit scouting dashboard
 
 src/
-  data_engineering.py           # Temporal feature construction
+  data_engineering.py           # Temporal feature construction + league tier + form windows
+  enrich_contract.py            # Contract awareness enrichment (Phase 9)
   data_cleaning.py              # Cleaning and formatting
   feature_engineering.py        # Per-90 features and encoding
   modeling.py                   # XGBoost market value models
   scouting.py                   # Undervalued candidate generation
+  scouting_rationale.py         # Personalized scouting rationale (Phase 10)
+  league_tiers.py               # League tier classification (Phase 8)
   enrich_similarity.py          # External advanced-stat matching
   validate_enrichment.py        # Advanced-stat validation gates
   role_mapping.py               # Role rules and compatibility matrix
   enrich_roles.py               # player_bio role metadata integration
-  similarity.py                 # Similarity engine
+  similarity.py                 # Similarity engine with profile metrics
   validate_roles.py             # Role-aware validation
   audit_data_quality.py          # Dataset quality and dashboard-context audit
   temporal_backtest.py           # Historical scouting lead outcome backtest
@@ -502,6 +564,8 @@ This project is best understood as a data product, not only a model experiment.
 
 The prediction model estimates market value. The scouting layer turns prediction errors into candidate discovery. The similarity engine converts a shortlist into recruitment alternatives. The role-aware layer makes those alternatives more tactically realistic. The rationale layer explains why a player deserves review in scout-friendly language. The temporal validation layer suggests that the scouting signal has modest but measurable value as a prioritization tool, especially over a 12-month horizon.
 
+The league tier, contract, and form layers add real-world context that scouts need for decision-making. The export capabilities (Excel, PDF, watchlist) complete the workflow so scouts can share findings with their team without leaving the tool.
+
 The result is a reproducible football scouting workflow that can answer:
 
-> Who looks undervalued, who is statistically similar, who actually makes sense as a tactical alternative, why should a scout review them, and did similar historical leads gain value later?
+> Who looks undervalued, who is statistically similar, who actually makes sense as a tactical alternative, why should a scout review them, what is their contract and form situation, and did similar historical leads gain value later?
